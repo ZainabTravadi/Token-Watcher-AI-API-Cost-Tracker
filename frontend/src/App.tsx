@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useTelemetryLiveRefresh } from "@/lib/api";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Overview from "./pages/app/Overview.tsx";
@@ -11,13 +12,27 @@ import Models from "./pages/app/Models.tsx";
 import Requests from "./pages/app/Requests.tsx";
 import Settings from "./pages/app/Settings.tsx";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+      staleTime: 2_000,
+    },
+  },
+});
+
+function LiveRefreshBridge() {
+  useTelemetryLiveRefresh();
+  return null;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <LiveRefreshBridge />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />

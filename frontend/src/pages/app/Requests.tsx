@@ -1,32 +1,55 @@
 import { useMemo, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { DataTable } from "@/components/DataTable";
-import { logs, endpoints, models, fmtUSD, fmtNum } from "@/lib/data";
+import { fmtUSD, fmtNum } from "@/lib/data";
+import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
+import { useAnalyticsSnapshotQuery, useTelemetryRowsQuery } from "@/lib/api";
 
 export default function Requests() {
   const [endpoint, setEndpoint] = useState("all");
   const [model, setModel] = useState("all");
+  const analytics = useAnalyticsSnapshotQuery();
+  const telemetry = useTelemetryRowsQuery();
 
-  const filtered = useMemo(
-    () => logs.filter((l) => (endpoint === "all" || l.endpoint === endpoint) && (model === "all" || l.model === model)),
-    [endpoint, model]
-  );
+  const filtered = useMemo(() => {
+    const rows = telemetry.data ?? [];
+    return rows.filter((l) => (endpoint === "all" || l.route === endpoint) && (model === "all" || l.model === model));
+  }, [endpoint, model, telemetry.data]);
+
+  if (analytics.isLoading || telemetry.isLoading) {
+    return (
+      <AppLayout title="Request log" meta="loading telemetry…">
+        <PageLoadingState rows={8} />
+      </AppLayout>
+    );
+  }
+
+  if (analytics.isError || telemetry.isError || !analytics.data) {
+    return (
+      <AppLayout title="Request log" meta="backend unavailable">
+        <PageErrorState title="Could not load request log" message="The backend API is unreachable. Confirm the simulator is running and reload." />
+      </AppLayout>
+    );
+  }
+
+  const endpoints = analytics.data.endpoints;
+  const models = analytics.data.models;
 
   return (
-    <AppLayout title="Request log" meta={`${filtered.length} of ${logs.length} entries`}>
+    <AppLayout title="Request log" meta={`${filtered.length} of ${telemetry.data?.length ?? 0} entries`}>
       <div className="flex items-end gap-6 hairline pb-5 mb-2">
         <div>
           <div className="label-mono mb-1.5">Endpoint</div>
           <select value={endpoint} onChange={(e) => setEndpoint(e.target.value)} className="input-rect w-56">
             <option value="all">— all endpoints —</option>
-            {endpoints.map((e) => <option key={e.path} value={e.path}>{e.path}</option>)}
+            {endpoints.map((e) => <option key={e.route} value={e.route}>{e.route}</option>)}
           </select>
         </div>
         <div>
           <div className="label-mono mb-1.5">Model</div>
           <select value={model} onChange={(e) => setModel(e.target.value)} className="input-rect w-56">
             <option value="all">— all models —</option>
-            {models.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
+            {models.map((m) => <option key={m.model} value={m.model}>{m.model}</option>)}
           </select>
         </div>
         <button
@@ -41,14 +64,16 @@ export default function Requests() {
 
       <DataTable
         columns={[
-          { key: "ts", label: "Timestamp", render: (r) => <span className="font-mono text-xs">{r.ts}</span> },
-          { key: "endpoint", label: "Endpoint", render: (r) => <span className="font-mono">{r.endpoint}</span> },
+          { key: "timestamp", label: "Timestamp", render: (r) => <span className="font-mono text-xs">{new Date(r.timestamp).toLocaleString()}</span> },
+          { key: "route", label: "Endpoint", render: (r) => <span className="font-mono">{r.route}</span> },
           { key: "model", label: "Model", render: (r) => <span className="font-mono text-xs">{r.model}</span> },
-          { key: "inputTokens", label: "Input", align: "right", render: (r) => fmtNum(r.inputTokens) },
-          { key: "outputTokens", label: "Output", align: "right", render: (r) => fmtNum(r.outputTokens) },
-          { key: "cost", label: "Cost", align: "right", render: (r) => fmtUSD(r.cost) },
-          { key: "status", label: "Status", align: "right", render: (r) => (
-            <span className={`font-mono text-xs ${r.status === "200" ? "text-positive" : "text-negative"}`}>{r.status}</span>
+          { key: "input_tokens", label: "Input", align: "right", render: (r) => fmtNum(r.input_tokens) },
+          { key: "output_tokens", label: "Output", align: "right", render: (r) => fmtNum(r.output_tokens) },
+          { key: "cost_usd", label: "Cost", align: "right", render: (r) => fmtUSD(r.cost_usd) },
+          { key: "error", label: "Status", align: "right", render: (r) => (
+            <span className={`font-mono text-xs ${!r.error ? "text-positive" : r.error.startsWith("HTTP_429") ? "text-amber-600" : "text-negative"}`}>
+              {!r.error ? "200" : r.error.startsWith("HTTP_429") ? "429" : "500"}
+            </span>
           ) },
         ]}
         rows={filtered}

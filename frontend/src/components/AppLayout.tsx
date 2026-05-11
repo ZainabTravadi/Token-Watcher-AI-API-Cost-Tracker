@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { ReactNode } from "react";
+import { useHealthQuery, useSimulatorStatusQuery } from "@/lib/api";
 
 const nav = [
   { label: "Overview", to: "/app" },
@@ -11,6 +12,14 @@ const nav = [
 
 export default function AppLayout({ children, title, meta }: { children: ReactNode; title: string; meta?: ReactNode }) {
   const { pathname } = useLocation();
+  const health = useHealthQuery();
+  const simulator = useSimulatorStatusQuery();
+  const liveLabel = health.isLoading
+    ? "connecting"
+    : health.isError || !health.data
+      ? "offline"
+      : `${health.data.telemetryRows.toLocaleString()} rows`;
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Top bar */}
@@ -21,10 +30,11 @@ export default function AppLayout({ children, title, meta }: { children: ReactNo
             <span className="label-mono">v0.4.1 · console</span>
           </NavLink>
           <div className="flex items-center gap-6 text-xs font-mono text-muted-foreground">
-            <span>env: <span className="text-foreground">production</span></span>
-            <span>region: <span className="text-foreground">us-east-1</span></span>
+            <span>env: <span className="text-foreground">{health.data?.environment ?? "development"}</span></span>
+            <span>db: <span className="text-foreground">{health.data?.database ?? "connecting"}</span></span>
             <span className="inline-flex items-center gap-2">
-              <span className="w-1.5 h-1.5 bg-positive rounded-full" /> live
+              <span className={`w-1.5 h-1.5 rounded-full ${health.isError ? "bg-negative" : "bg-positive"}`} />
+              {simulator.data?.running ? `live · ${liveLabel}` : "booting"}
             </span>
           </div>
         </div>

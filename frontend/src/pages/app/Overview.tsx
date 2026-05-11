@@ -1,13 +1,34 @@
 import AppLayout from "@/components/AppLayout";
 import { Stat } from "@/components/Stat";
 import { DataTable } from "@/components/DataTable";
-import { endpoints, models, logs, totals, fmtUSD, fmtNum } from "@/lib/data";
+import { fmtUSD, fmtNum, fmtPercent } from "@/lib/data";
+import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
+import { useAnalyticsSnapshotQuery } from "@/lib/api";
 
 export default function Overview() {
-  const topEndpoints = [...endpoints].sort((a, b) => b.cost - a.cost).slice(0, 5);
-  const topModels = [...models].sort((a, b) => b.cost - a.cost).slice(0, 5);
-  const recent = logs.slice(0, 8);
-  const maxEndpointCost = Math.max(...topEndpoints.map((e) => e.cost));
+  const analytics = useAnalyticsSnapshotQuery();
+
+  if (analytics.isLoading) {
+    return (
+      <AppLayout title="Overview" meta="loading analytics…">
+        <PageLoadingState rows={6} />
+      </AppLayout>
+    );
+  }
+
+  if (analytics.isError || !analytics.data) {
+    return (
+      <AppLayout title="Overview" meta="backend unavailable">
+        <PageErrorState title="Could not load analytics" message="The backend API is unreachable. Confirm TokenWatch backend is running on port 3001, then refresh." />
+      </AppLayout>
+    );
+  }
+
+  const topEndpoints = [...analytics.data.endpoints].slice(0, 5);
+  const topModels = [...analytics.data.models].slice(0, 5);
+  const recent = analytics.data.recent.slice(0, 8);
+  const maxEndpointCost = Math.max(...topEndpoints.map((e) => e.cost_usd), 1);
+  const overview = analytics.data.overview;
 
   return (
     <AppLayout title="Overview" meta={`updated ${new Date().toLocaleTimeString()}`}>
@@ -15,13 +36,13 @@ export default function Overview() {
       <div className="grid grid-cols-4 gap-10 hairline pb-8">
         <Stat
           label="Total spend · today"
-          value={fmtUSD(totals.spendToday)}
-          sub={`of ${fmtUSD(totals.budget)} budget`}
-          bar={{ value: totals.spendToday, max: totals.budget, label: `${Math.round((totals.spendToday / totals.budget) * 100)}% used` }}
+          value={fmtUSD(overview.spendToday)}
+          sub={`of ${fmtUSD(overview.budget)} budget`}
+          bar={{ value: overview.spendToday, max: overview.budget, label: `${Math.round((overview.spendToday / overview.budget) * 100)}% used` }}
         />
-        <Stat label="Requests · today" value={fmtNum(totals.requestsToday)} sub="+12.4% vs yesterday" />
-        <Stat label="Avg cost / request" value={fmtUSD(totals.avgCostPerRequest)} sub="−3.1% vs 7d avg" />
-        <Stat label="Errors · 24h" value="0.41%" sub="429: 312 · 500: 14" />
+        <Stat label="Requests · today" value={fmtNum(overview.requestsToday)} sub="live simulated volume" />
+        <Stat label="Avg cost / request" value={fmtUSD(overview.avgCostPerRequest)} sub="rolling 24h average" />
+        <Stat label="Errors · 24h" value={fmtPercent(overview.errorRate)} sub={`429: ${fmtNum(overview.errors429)} · 500: ${fmtNum(overview.errors500)}`} />
       </div>
 
       {/* Spend by endpoint with bars */}
@@ -32,15 +53,15 @@ export default function Overview() {
         </div>
         <div className="border-t border-hairline">
           {topEndpoints.map((e) => (
-            <div key={e.path} className="grid grid-cols-12 gap-4 items-center py-2.5 border-b border-hairline/60">
-              <div className="col-span-3 font-mono text-sm">{e.path}</div>
+            <div key={e.route} className="grid grid-cols-12 gap-4 items-center py-2.5 border-b border-hairline/60">
+              <div className="col-span-3 font-mono text-sm">{e.route}</div>
               <div className="col-span-5">
                 <div className="h-[6px] bg-secondary relative">
-                  <div className="absolute inset-y-0 left-0 bg-foreground" style={{ width: `${(e.cost / maxEndpointCost) * 100}%` }} />
+                  <div className="absolute inset-y-0 left-0 bg-foreground" style={{ width: `${(e.cost_usd / maxEndpointCost) * 100}%` }} />
                 </div>
               </div>
               <div className="col-span-2 text-right text-sm num text-muted-foreground">{fmtNum(e.requests)} req</div>
-              <div className="col-span-2 text-right text-sm num">{fmtUSD(e.cost)}</div>
+              <div className="col-span-2 text-right text-sm num">{fmtUSD(e.cost_usd)}</div>
             </div>
           ))}
         </div>
@@ -55,10 +76,10 @@ export default function Overview() {
           </div>
           <DataTable
             columns={[
-              { key: "name", label: "Model", render: (r) => <span className="font-mono">{r.name}</span> },
+              { key: "model", label: "Model", render: (r) => <span className="font-mono">{r.model}</span> },
               { key: "requests", label: "Requests", align: "right", render: (r) => fmtNum(r.requests) },
               { key: "tokens", label: "Tokens", align: "right", render: (r) => fmtNum(r.tokens) },
-              { key: "cost", label: "Cost", align: "right", render: (r) => fmtUSD(r.cost) },
+              { key: "cost_usd", label: "Cost", align: "right", render: (r) => fmtUSD(r.cost_usd) },
             ]}
             rows={topModels}
           />
