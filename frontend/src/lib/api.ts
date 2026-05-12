@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const API_BASE_URL = import.meta.env.VITE_TOKENWATCH_API_URL ?? "http://localhost:3001";
@@ -81,6 +81,29 @@ export interface TelemetryRow {
   error: string | null;
 }
 
+export type TelemetryStreamStatus = "connecting" | "live" | "reconnecting" | "closed";
+
+const streamListeners = new Set<() => void>();
+let streamStatus: TelemetryStreamStatus = "connecting";
+
+function setStreamStatus(status: TelemetryStreamStatus): void {
+  if (status === streamStatus) {
+    return;
+  }
+
+  streamStatus = status;
+  for (const listener of streamListeners) {
+    listener();
+  }
+}
+
+function subscribeStreamStatus(listener: () => void): () => void {
+  streamListeners.add(listener);
+  return () => {
+    streamListeners.delete(listener);
+  };
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -161,7 +184,12 @@ export function useTelemetryLiveRefresh(): void {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    setStreamStatus("connecting");
     const source = new EventSource(`${API_BASE_URL}/api/telemetry/stream`);
+
+    source.onopen = () => {
+      setStreamStatus("live");
+    };
 
     const refresh = (): void => {
       void queryClient.invalidateQueries({ queryKey: ["analytics-snapshot"] });
@@ -173,11 +201,19 @@ export function useTelemetryLiveRefresh(): void {
     source.addEventListener("telemetry", refresh);
     source.addEventListener("seeded", refresh);
     source.addEventListener("connected", refresh);
+    source.onerror = () => {
+      setStreamStatus(source.readyState === EventSource.CLOSED ? "closed" : "reconnecting");
+    };
 
     return () => {
+      setStreamStatus("closed");
       source.close();
     };
   }, [queryClient]);
+}
+
+export function useTelemetryStreamStatus(): TelemetryStreamStatus {
+  return useSyncExternalStore(subscribeStreamStatus, () => streamStatus, () => "connecting");
 }
 
 export function useDashboardHealthLabel(): string {

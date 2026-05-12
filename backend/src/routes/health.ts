@@ -11,7 +11,7 @@ export function createHealthRouter(): Router {
     response.json({
       status: "ok",
       database: "connected",
-      telemetry: "simulated",
+      telemetry: "sdk-ingested",
       telemetryRows: getTelemetryCount(),
       environment: config.nodeEnv,
       port: config.port

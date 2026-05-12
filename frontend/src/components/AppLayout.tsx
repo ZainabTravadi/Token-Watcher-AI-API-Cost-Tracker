@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { ReactNode } from "react";
-import { useHealthQuery, useSimulatorStatusQuery } from "@/lib/api";
+import { useHealthQuery, useSimulatorStatusQuery, useTelemetryStreamStatus } from "@/lib/api";
 
 const nav = [
   { label: "Overview", to: "/app" },
@@ -14,11 +14,19 @@ export default function AppLayout({ children, title, meta }: { children: ReactNo
   const { pathname } = useLocation();
   const health = useHealthQuery();
   const simulator = useSimulatorStatusQuery();
+  const streamStatus = useTelemetryStreamStatus();
   const liveLabel = health.isLoading
     ? "connecting"
     : health.isError || !health.data
       ? "offline"
       : `${health.data.telemetryRows.toLocaleString()} rows`;
+  const pipelineLabel = streamStatus === "live"
+    ? `live · ${liveLabel}`
+    : streamStatus === "reconnecting"
+      ? `reconnecting · ${liveLabel}`
+      : streamStatus === "closed"
+        ? `offline · ${liveLabel}`
+        : `warming up · ${liveLabel}`;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -34,7 +42,11 @@ export default function AppLayout({ children, title, meta }: { children: ReactNo
             <span>db: <span className="text-foreground">{health.data?.database ?? "connecting"}</span></span>
             <span className="inline-flex items-center gap-2">
               <span className={`w-1.5 h-1.5 rounded-full ${health.isError ? "bg-negative" : "bg-positive"}`} />
-              {simulator.data?.running ? `live · ${liveLabel}` : "booting"}
+              {pipelineLabel}
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className={`w-1.5 h-1.5 rounded-full ${streamStatus === "live" ? "bg-positive" : streamStatus === "reconnecting" ? "bg-amber-500" : "bg-muted-foreground"}`} />
+              stream: {streamStatus}
             </span>
           </div>
         </div>

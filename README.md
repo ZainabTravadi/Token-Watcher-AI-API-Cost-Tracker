@@ -23,7 +23,17 @@ TokenWatch is a simulated AI observability platform for tracking requests, token
 - `frontend/src/lib/api.ts` is the single API client and React Query integration point.
 - `frontend/src/pages` renders dashboard screens from backend data instead of local mock arrays.
 - `frontend/src/components/AsyncState.tsx` provides loading and error states across the dashboard.
+- `sdk/` contains the lightweight TokenWatch TypeScript SDK for browser and Node.js consumers.
 
+```mermaid
+flowchart LR
+	A[SDK demo app] -->|fetch + retry + batch| B[Backend /ingest]
+	B --> C[(SQLite requests table)]
+	C --> D[Analytics engine]
+	D --> E[Frontend dashboard]
+	B --> F[SSE live updates]
+	F --> E
+```
 ## Setup
 
 ### 1. Install dependencies
@@ -49,6 +59,69 @@ Backend defaults:
 - Server URL: `http://localhost:3001`
 - API base path: `/api`
 - SQLite database file: `backend/data/tokenwatch.sqlite`
+```
+
+## Quick Start
+
+### 1. Install dependencies
+
+```bash
+cd backend
+npm install
+```
+
+```bash
+cd frontend
+npm install
+```
+
+```bash
+cd sdk
+npm install
+```
+
+### 2. Start the backend
+
+```bash
+cd backend
+npm run dev
+```
+
+The backend starts the demo SDK publisher automatically and exposes the ingest API at `http://localhost:3001/api/ingest`.
+
+### 3. Start the frontend
+
+```bash
+cd frontend
+npm run dev
+```
+
+### 4. Use the SDK
+
+```ts
+import { TokenWatch } from "tokenwatch";
+
+TokenWatch.init({
+  apiUrl: "http://localhost:3001",
+  projectId: "demo-app"
+});
+
+TokenWatch.track("request.completed", {
+  properties: { route: "/api/chat", status: 200 }
+});
+
+TokenWatch.simulate({
+  provider: "openai",
+  model: "gpt-4o",
+  endpoint: "/api/chat"
+});
+```
+
+## Integration Example
+
+The SDK demo app in [sdk/examples/demo.ts](sdk/examples/demo.ts) is the same shape a customer app would use. It initializes the client, starts simulation, and sends events over `fetch` to the backend ingest API.
+
+If you want to wire your own app, point `apiUrl` at the backend and send telemetry through `TokenWatch.init()` plus `TokenWatch.simulate()` or `TokenWatch.track()`.
 
 ### 3. Run the frontend
 
@@ -94,6 +167,8 @@ Add screenshots here when capturing the product demo.
 - `docs/screenshots/endpoints.png`
 - `docs/screenshots/models.png`
 - `docs/screenshots/requests.png`
+- `docs/screenshots/sdk-demo.png`
+- `docs/screenshots/ingest-terminal.png`
 
 ## What You Should See
 
@@ -111,3 +186,24 @@ Add screenshots here when capturing the product demo.
 - Add route-level drilldowns with longer historical windows.
 - Add auth and multi-workspace support.
 - Add production deployment configuration and observability for the backend itself.
+
+## SDK
+
+The `sdk/` folder now contains a standalone `tokenwatch` package with a Firebase-style surface:
+
+```ts
+import { TokenWatch } from "tokenwatch";
+
+TokenWatch.init({
+	apiUrl: "http://localhost:4000",
+	projectId: "demo-app"
+});
+
+TokenWatch.simulate({
+	provider: "openai",
+	model: "gpt-4o",
+	endpoint: "/api/chat"
+});
+```
+
+It exposes `init()`, `track()`, `simulate()`, `startSimulation()`, `stopSimulation()`, `identify()`, and `setEndpoint()` with no runtime dependencies.
