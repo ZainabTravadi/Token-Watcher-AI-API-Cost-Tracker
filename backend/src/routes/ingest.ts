@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ingestTelemetry, validateTelemetryPayload } from "../services/ingestService";
+import { authenticateSDK, type AuthenticatedRequest } from "../middleware/auth";
 
 const ingestWindowMs = 10_000;
 const ingestBurstLimit = 120;
@@ -8,12 +9,12 @@ const requestCounts = new Map<string, { count: number; resetAt: number }>();
 export function createIngestRouter(): Router {
   const router = Router();
 
-  router.post("/ingest", handleIngest);
+  router.post("/ingest", authenticateSDK, handleIngest);
 
   return router;
 }
 
-function handleIngest(request: any, response: any): void {
+function handleIngest(request: AuthenticatedRequest, response: any): void {
   const ip = String(request.ip ?? request.headers["x-forwarded-for"] ?? "local");
   const rateState = checkRateLimit(ip);
 
@@ -24,9 +25,9 @@ function handleIngest(request: any, response: any): void {
 
   try {
     const payload = validateTelemetryPayload(request.body);
-    const result = ingestTelemetry(payload);
+    const result = ingestTelemetry(request.workspaceId!, payload);
 
-    console.info(`[ingest] ip=${ip} count=${result.inserted} path=${request.originalUrl ?? request.path}`);
+    console.info(`[ingest] ip=${ip} workspace=${request.workspaceId} count=${result.inserted} path=${request.originalUrl ?? request.path}`);
 
     response.status(201).json({ ok: true, inserted: result.inserted, rows: result.rows });
   } catch (error) {

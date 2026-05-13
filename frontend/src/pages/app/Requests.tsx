@@ -4,12 +4,14 @@ import { DataTable } from "@/components/DataTable";
 import { fmtUSD, fmtNum } from "@/lib/data";
 import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
 import { useAnalyticsSnapshotQuery, useTelemetryRowsQuery } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Requests() {
   const [endpoint, setEndpoint] = useState("all");
   const [model, setModel] = useState("all");
-  const analytics = useAnalyticsSnapshotQuery();
-  const telemetry = useTelemetryRowsQuery();
+  const { currentWorkspace } = useAuth();
+  const analytics = useAnalyticsSnapshotQuery(currentWorkspace?.id);
+  const telemetry = useTelemetryRowsQuery(currentWorkspace?.id);
 
   const filtered = useMemo(() => {
     const rows = telemetry.data ?? [];

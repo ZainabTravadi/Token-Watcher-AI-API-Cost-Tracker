@@ -8,28 +8,48 @@ export function startSdkDemo(apiUrl: string): ChildProcess | null {
     return demoProcess;
   }
 
-  const demoScript = path.resolve(process.cwd(), "..", "sdk", "examples", "demo.ts");
-  const tsxCommand = resolveTsxCommand();
+  try {
+    const demoScript = path.resolve(process.cwd(), "..", "sdk", "examples", "demo.ts");
+    const tsxCommand = resolveTsxCommand();
 
-  demoProcess = spawn(tsxCommand, [demoScript], {
-    env: {
-      ...process.env,
-      TOKENWATCH_API_URL: apiUrl,
-      TOKENWATCH_PROJECT_ID: "demo-app"
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-    shell: true
-  });
+    demoProcess = spawn(tsxCommand, [demoScript], {
+      env: {
+        ...process.env,
+        TOKENWATCH_API_URL: apiUrl,
+        TOKENWATCH_PROJECT_ID: "demo-app"
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      shell: true,
+      detached: false
+    });
 
-  demoProcess.stdout?.on("data", (chunk) => process.stdout.write(`[demo] ${chunk.toString()}`));
-  demoProcess.stderr?.on("data", (chunk) => process.stderr.write(`[demo] ${chunk.toString()}`));
+    demoProcess.stdout?.on("data", (chunk) => process.stdout.write(`[demo] ${chunk.toString()}`));
+    demoProcess.stderr?.on("data", (chunk) => {
+      // Silently ignore demo errors - don't let them crash the server
+      // process.stderr.write(`[demo] ${chunk.toString()}`);
+    });
 
-  demoProcess.on("exit", () => {
-    demoProcess = null;
-  });
+    demoProcess.on("exit", (code) => {
+      demoProcess = null;
+      // Try to restart demo after a delay
+      if (code !== 0) {
+        setTimeout(() => {
+          startSdkDemo(apiUrl);
+        }, 5000);
+      }
+    });
 
-  return demoProcess;
+    demoProcess.on("error", (err) => {
+      console.error("[demo] Failed to start demo process:", err);
+      demoProcess = null;
+    });
+
+    return demoProcess;
+  } catch (err) {
+    console.error("[demo] Error starting SDK demo:", err);
+    return null;
+  }
 }
 
 export function stopSdkDemo(): void {

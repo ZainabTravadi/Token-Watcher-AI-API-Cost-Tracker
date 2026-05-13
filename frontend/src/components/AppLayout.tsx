@@ -1,6 +1,17 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { ReactNode } from "react";
 import { useHealthQuery, useSimulatorStatusQuery, useTelemetryStreamStatus } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, LogOut } from "lucide-react";
 
 const nav = [
   { label: "Overview", to: "/app" },
@@ -12,9 +23,12 @@ const nav = [
 
 export default function AppLayout({ children, title, meta }: { children: ReactNode; title: string; meta?: ReactNode }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { user, workspaces, currentWorkspace, setCurrentWorkspace, logout } = useAuth();
   const health = useHealthQuery();
   const simulator = useSimulatorStatusQuery();
   const streamStatus = useTelemetryStreamStatus();
+
   const liveLabel = health.isLoading
     ? "connecting"
     : health.isError || !health.data
@@ -27,6 +41,18 @@ export default function AppLayout({ children, title, meta }: { children: ReactNo
       : streamStatus === "closed"
         ? `offline · ${liveLabel}`
         : `warming up · ${liveLabel}`;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
+
+  const handleWorkspaceChange = (workspaceId: string) => {
+    const workspace = workspaces?.find((ws) => ws.id === workspaceId);
+    if (workspace) {
+      setCurrentWorkspace(workspace);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -48,6 +74,24 @@ export default function AppLayout({ children, title, meta }: { children: ReactNo
               <span className={`w-1.5 h-1.5 rounded-full ${streamStatus === "live" ? "bg-positive" : streamStatus === "reconnecting" ? "bg-amber-500" : "bg-muted-foreground"}`} />
               stream: {streamStatus}
             </span>
+            
+            {/* User menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2">
+                  {user?.email}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -76,9 +120,34 @@ export default function AppLayout({ children, title, meta }: { children: ReactNo
             })}
           </nav>
 
+          {/* Workspace Selector */}
           <div className="label-mono mt-10 mb-3">Workspace</div>
-          <div className="text-sm">acme-prod</div>
-          <div className="text-xs text-muted-foreground font-mono mt-1">ws_8a4f…c021</div>
+          {currentWorkspace && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-start p-0 h-auto font-normal text-sm hover:bg-accent">
+                    <span className="truncate">{currentWorkspace.name}</span>
+                    <ChevronDown className="h-3 w-3 ml-auto flex-shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {workspaces?.map((ws) => (
+                    <DropdownMenuItem
+                      key={ws.id}
+                      onClick={() => handleWorkspaceChange(ws.id)}
+                      className={currentWorkspace.id === ws.id ? "bg-accent" : ""}
+                    >
+                      {ws.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <div className="text-xs text-muted-foreground font-mono mt-1 truncate" title={currentWorkspace.id}>
+                {currentWorkspace.id.slice(0, 8)}…
+              </div>
+            </>
+          )}
 
           <div className="label-mono mt-10 mb-3">Docs</div>
           <ul className="text-sm space-y-1.5">

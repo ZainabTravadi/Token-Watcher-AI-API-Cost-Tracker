@@ -1,28 +1,15 @@
 import { Link } from "react-router-dom";
 import { fmtUSD, fmtNum } from "@/lib/data";
-import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
-import { useAnalyticsSnapshotQuery } from "@/lib/api";
+import { PageLoadingState } from "@/components/AsyncState";
 
 const Index = () => {
-  const analytics = useAnalyticsSnapshotQuery();
-
-  if (analytics.isLoading) {
-    return (
-      <div className="min-h-screen bg-background text-foreground px-8 py-16 max-w-[1100px] mx-auto">
-        <PageLoadingState rows={4} />
-      </div>
-    );
-  }
-
-  if (analytics.isError || !analytics.data) {
-    return (
-      <div className="min-h-screen bg-background text-foreground px-8 py-16 max-w-[1100px] mx-auto">
-        <PageErrorState title="Backend unavailable" message="TokenWatch could not reach the analytics API. Start the backend and refresh the page." />
-      </div>
-    );
-  }
-
-  const top = analytics.data.endpoints.slice(0, 4);
+  // Show landing page with demo/placeholder data
+  const top = [
+    { route: "/api/chat", requests: 18403, cost_usd: 1230.50, avg_cost_usd: 0.067, avg_latency_ms: 1200 },
+    { route: "/api/summarize", requests: 3200, cost_usd: 412.80, avg_cost_usd: 0.129, avg_latency_ms: 2400 },
+    { route: "/api/search", requests: 2100, cost_usd: 68.50, avg_cost_usd: 0.033, avg_latency_ms: 800 },
+    { route: "/api/autocomplete", requests: 1400, cost_usd: 45.20, avg_cost_usd: 0.032, avg_latency_ms: 400 },
+  ];
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
@@ -154,7 +141,7 @@ const Index = () => {
                 </tbody>
               </table>
               <div className="px-4 py-2 text-xs font-mono text-muted-foreground flex justify-between">
-                <span>{top.length} of {analytics.data.endpoints.length} rows</span>
+                <span>{top.length} of {top.length} rows</span>
                 <Link to="/app" className="link-underline">open full console →</Link>
               </div>
             </div>

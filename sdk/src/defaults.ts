@@ -1,8 +1,7 @@
 import type { TokenWatchProvider } from "./types.js";
 
-export const DEFAULT_API_URL = "http://localhost:4000";
-export const DEFAULT_ENDPOINT = "/api/ingest";
-export const DEFAULT_PROJECT_ID = "default";
+export const DEFAULT_API_URL = "http://localhost:3001";
+export const DEFAULT_ENDPOINT = "/ingest";
 export const DEFAULT_SIMULATION_INTERVAL_MS = 4000;
 
 export const MODEL_PROFILES: Record<string, { provider: string; inputRange: [number, number]; outputRange: [number, number]; baseLatency: number; inputCostPerK: number; outputCostPerK: number }> = {

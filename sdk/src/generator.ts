@@ -1,12 +1,12 @@
 import { DEFAULT_SIMULATION_INTERVAL_MS, MODEL_PROFILES, ROUTE_MODEL_MAP, ROUTE_WEIGHTS, normalizeProvider, modelProvider } from "./defaults.js";
 import type { TokenWatchIdentity, TokenWatchSimulationOptions, TokenWatchTelemetryRecord } from "./types.js";
 
-export function createTrackRecord(name: string, projectId: string, identity: TokenWatchIdentity | null, options: { timestamp?: number; properties?: Record<string, unknown> } = {}): TokenWatchTelemetryRecord {
+export function createTrackRecord(name: string, workspaceId: string, identity: TokenWatchIdentity | null, options: { timestamp?: number; properties?: Record<string, unknown> } = {}): TokenWatchTelemetryRecord {
   const timestamp = options.timestamp ?? Date.now();
 
   return {
     id: createId(),
-    projectId,
+    workspace_id: workspaceId,
     timestamp,
     event: name,
     route: `/events/${slugify(name)}`,
@@ -23,10 +23,10 @@ export function createTrackRecord(name: string, projectId: string, identity: Tok
   };
 }
 
-export function createIdentifyRecord(id: string, projectId: string, traits?: Record<string, unknown>): TokenWatchTelemetryRecord {
+export function createIdentifyRecord(id: string, workspaceId: string, traits?: Record<string, unknown>): TokenWatchTelemetryRecord {
   return {
     id: createId(),
-    projectId,
+    workspace_id: workspaceId,
     timestamp: Date.now(),
     event: "identify",
     route: "/identify",
@@ -45,7 +45,7 @@ export function createIdentifyRecord(id: string, projectId: string, traits?: Rec
   };
 }
 
-export function createSimulationRecord(projectId: string, identity: TokenWatchIdentity | null, options: TokenWatchSimulationOptions = {}): TokenWatchTelemetryRecord {
+export function createSimulationRecord(workspaceId: string, identity: TokenWatchIdentity | null, options: TokenWatchSimulationOptions = {}): TokenWatchTelemetryRecord {
   const route = options.endpoint ?? pickWeighted(ROUTE_WEIGHTS);
   const requestedModel = options.model ?? pickWeighted(ROUTE_MODEL_MAP[route] ?? ROUTE_MODEL_MAP["/api/chat"]);
   const provider = normalizeProvider(options.provider, requestedModel);
@@ -64,7 +64,7 @@ export function createSimulationRecord(projectId: string, identity: TokenWatchId
 
   return {
     id: createId(),
-    projectId,
+    workspace_id: workspaceId,
     timestamp,
     event: "simulate",
     route,

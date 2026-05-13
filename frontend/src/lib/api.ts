@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const API_BASE_URL = import.meta.env.VITE_TOKENWATCH_API_URL ?? "http://localhost:3001";
 
+export { API_BASE_URL };
+
 export type TelemetryProvider = "OpenAI" | "Anthropic";
 export type TelemetryModel = "gpt-4o" | "gpt-4o-mini" | "claude-sonnet" | "claude-haiku";
 export type TelemetryRoute = "/api/chat" | "/api/summarize" | "/api/search" | "/api/autocomplete" | "/api/agents";
@@ -110,6 +112,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
     },
+    credentials: "include",
     ...init
   });
 
@@ -130,13 +133,17 @@ export async function fetchSimulatorStatus(): Promise<SimulatorStatusResponse> {
   return response.data;
 }
 
-export async function fetchAnalyticsSnapshot(): Promise<AnalyticsSnapshot> {
-  const response = await apiFetch<{ data: AnalyticsSnapshot }>("/api/analytics/snapshot");
+export async function fetchAnalyticsSnapshot(workspaceId?: string): Promise<AnalyticsSnapshot> {
+  const url = workspaceId ? `/api/analytics/snapshot?workspaceId=${workspaceId}` : "/api/analytics/snapshot";
+  const response = await apiFetch<{ data: AnalyticsSnapshot }>(url);
   return response.data;
 }
 
-export async function fetchTelemetryRows(limit = 500): Promise<TelemetryRow[]> {
-  const response = await apiFetch<{ data: TelemetryRow[] }>(`/api/telemetry?limit=${limit}`);
+export async function fetchTelemetryRows(workspaceId?: string, limit = 500): Promise<TelemetryRow[]> {
+  const url = workspaceId 
+    ? `/api/telemetry?workspaceId=${workspaceId}&limit=${limit}`
+    : `/api/telemetry?limit=${limit}`;
+  const response = await apiFetch<{ data: TelemetryRow[] }>(url);
   return response.data;
 }
 
@@ -160,23 +167,25 @@ export function useSimulatorStatusQuery() {
   });
 }
 
-export function useAnalyticsSnapshotQuery() {
+export function useAnalyticsSnapshotQuery(workspaceId?: string) {
   return useQuery({
-    queryKey: ["analytics-snapshot"],
-    queryFn: fetchAnalyticsSnapshot,
+    queryKey: ["analytics-snapshot", workspaceId],
+    queryFn: () => fetchAnalyticsSnapshot(workspaceId),
     refetchInterval: 5_000,
     staleTime: 2_000,
-    retry: 1
+    retry: 1,
+    enabled: !!workspaceId
   });
 }
 
-export function useTelemetryRowsQuery(limit = 500) {
+export function useTelemetryRowsQuery(workspaceId?: string, limit = 500) {
   return useQuery({
-    queryKey: ["telemetry-rows", limit],
-    queryFn: () => fetchTelemetryRows(limit),
+    queryKey: ["telemetry-rows", workspaceId, limit],
+    queryFn: () => fetchTelemetryRows(workspaceId, limit),
     refetchInterval: 4_000,
     staleTime: 1_000,
-    retry: 1
+    retry: 1,
+    enabled: !!workspaceId
   });
 }
 
@@ -185,7 +194,9 @@ export function useTelemetryLiveRefresh(): void {
 
   useEffect(() => {
     setStreamStatus("connecting");
-    const source = new EventSource(`${API_BASE_URL}/api/telemetry/stream`);
+    const source = new EventSource(`${API_BASE_URL}/api/telemetry/stream`, {
+      withCredentials: true
+    });
 
     source.onopen = () => {
       setStreamStatus("live");

@@ -6,6 +6,8 @@ import {
   insertTelemetryBatch,
   getTelemetryCount
 } from "./telemetryRepository";
+import { getDatabase } from "../db/database";
+import { generateId } from "../utils/auth";
 
 export interface SimulatorState {
   running: boolean;
@@ -13,13 +15,67 @@ export interface SimulatorState {
   totalRows: number;
 }
 
+function getDemoWorkspaceId(): string {
+  const db = getDatabase();
+  
+  // Check if demo workspace exists
+  const existing = db.prepare("SELECT id FROM workspaces WHERE name = 'Demo Workspace' LIMIT 1").get() as { id: string } | undefined;
+  if (existing) {
+    return existing.id;
+  }
+
+  // Create demo workspace
+  try {
+    const workspaceId = generateId("ws");
+    const demoUserId = generateId("user");
+    const now = Date.now();
+
+    // Create demo user with a dummy hash
+    const dummyHash = "disabled"; // Demo user cannot login
+    const userStmt = db.prepare(
+      "INSERT INTO users (id, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    );
+    userStmt.run(demoUserId, "demo@tokenwatch.local", dummyHash, now, now);
+
+    // Create demo workspace
+    const wsStmt = db.prepare(
+      "INSERT INTO workspaces (id, user_id, name, monthly_budget, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    );
+    wsStmt.run(workspaceId, demoUserId, "Demo Workspace", 500, now, now);
+
+    // Create workspace settings
+    const settingsId = generateId("wss");
+    const settingsStmt = db.prepare(
+      "INSERT INTO workspace_settings (id, workspace_id, alert_on_high_cost, alert_on_errors, alert_cost_threshold, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    );
+    settingsStmt.run(settingsId, workspaceId, 1, 1, 50, now, now);
+
+    // Create API key
+    const apiKeyId = generateId("api_key");
+    const keyStmt = db.prepare(
+      "INSERT INTO api_keys (id, workspace_id, key_hash, created_at) VALUES (?, ?, ?, ?)"
+    );
+    keyStmt.run(apiKeyId, workspaceId, apiKeyId, now);
+
+    return workspaceId;
+  } catch (error) {
+    console.error("[simulator] Failed to create demo workspace:", error);
+    throw error;
+  }
+}
+
 export function seedTelemetryDataset(force = false): number {
   if (!force && hasTelemetryRows()) {
     return 0;
   }
 
+  const workspaceId = getDemoWorkspaceId();
   const records = generateHistoricalDataset(7);
-  const inserted = insertTelemetryBatch(records);
+  
+  // Add workspace_id to all records
+  const recordsWithWorkspace = records.map((r) => ({ ...r, workspace_id: workspaceId }));
+  
+  const inserted = insertTelemetryBatch(recordsWithWorkspace);
   telemetryBus.emitSeeded(inserted.length);
   return inserted.length;
 }

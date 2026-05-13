@@ -2,8 +2,9 @@ import type { CreateRequestRecordInput, RequestRecord } from "../types/requests"
 import { insertTelemetry, listLatestTelemetry } from "./telemetryRepository";
 import type { TelemetryRecord } from "../types/telemetry";
 
-export function recordRequest(input: CreateRequestRecordInput): RequestRecord {
+export function recordRequest(workspaceId: string, input: CreateRequestRecordInput): RequestRecord {
   return insertTelemetry({
+    workspace_id: workspaceId,
     timestamp: input.timestamp,
     route: input.route,
     model: input.model,
@@ -17,6 +18,6 @@ export function recordRequest(input: CreateRequestRecordInput): RequestRecord {
   } as unknown as Omit<TelemetryRecord, "id">);
 }
 
-export function listLatestRequests(limit = 100): RequestRecord[] {
-  return listLatestTelemetry(limit);
+export function listLatestRequests(workspaceId: string, limit = 100): RequestRecord[] {
+  return listLatestTelemetry(workspaceId, limit);
 }

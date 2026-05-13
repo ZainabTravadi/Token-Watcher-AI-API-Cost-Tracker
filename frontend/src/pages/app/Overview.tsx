@@ -4,9 +4,11 @@ import { DataTable } from "@/components/DataTable";
 import { fmtUSD, fmtNum, fmtPercent } from "@/lib/data";
 import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
 import { useAnalyticsSnapshotQuery } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Overview() {
-  const analytics = useAnalyticsSnapshotQuery();
+  const { currentWorkspace } = useAuth();
+  const analytics = useAnalyticsSnapshotQuery(currentWorkspace?.id);
 
   if (analytics.isLoading) {
     return (

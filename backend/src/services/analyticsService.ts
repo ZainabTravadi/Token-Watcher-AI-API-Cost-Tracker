@@ -1,9 +1,9 @@
 import { getAnalyticsSnapshot } from "./telemetryRepository";
 
-export function buildAnalyticsSnapshot(): ReturnType<typeof getAnalyticsSnapshot> {
-  return getAnalyticsSnapshot(72);
+export function buildAnalyticsSnapshot(workspaceId: string): ReturnType<typeof getAnalyticsSnapshot> {
+  return getAnalyticsSnapshot(workspaceId, 72);
 }
 
-export function buildRealtimeAnalyticsSnapshot(): ReturnType<typeof getAnalyticsSnapshot> {
-  return getAnalyticsSnapshot(24);
+export function buildRealtimeAnalyticsSnapshot(workspaceId: string): ReturnType<typeof getAnalyticsSnapshot> {
+  return getAnalyticsSnapshot(workspaceId, 24);
 }

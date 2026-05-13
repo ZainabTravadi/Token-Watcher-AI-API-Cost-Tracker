@@ -6,6 +6,7 @@ export type TelemetryRoute = "/api/chat" | "/api/summarize" | "/api/search" | "/
 
 export interface TelemetryRecord {
   id: number;
+  workspace_id: string;
   timestamp: number;
   route: TelemetryRoute;
   model: TelemetryModel;

@@ -1,4 +1,4 @@
-import { DEFAULT_API_URL, DEFAULT_ENDPOINT, DEFAULT_PROJECT_ID } from "./defaults.js";
+import { DEFAULT_API_URL, DEFAULT_ENDPOINT } from "./defaults.js";
 import { createIdentifyRecord, createSimulationRecord, createTrackRecord, defaultSimulationIntervalMs } from "./generator.js";
 import { getState, readSimulationState, setConfig, setIdentity, setSimulationFlags, setSimulationTimer, snapshot } from "./state.js";
 import { postJson } from "./transport.js";
@@ -11,11 +11,25 @@ import type {
 } from "./types";
 
 export function init(options: TokenWatchInitOptions): ReturnType<typeof snapshot> {
+  if (!options.apiKey) {
+    throw new Error("apiKey is required");
+  }
+  if (!options.workspaceId) {
+    throw new Error("workspaceId is required");
+  }
+  if (!options.apiUrl) {
+    throw new Error("apiUrl is required");
+  }
+
   return setConfig({
-    apiUrl: options.apiUrl || DEFAULT_API_URL,
+    apiUrl: options.apiUrl,
+    apiKey: options.apiKey,
+    workspaceId: options.workspaceId,
     endpoint: options.endpoint || DEFAULT_ENDPOINT,
-    projectId: options.projectId || DEFAULT_PROJECT_ID,
-    headers: options.headers ?? {}
+    headers: {
+      ...(options.headers ?? {}),
+      "X-API-Key": options.apiKey
+    }
   });
 }
 
@@ -25,7 +39,7 @@ export function setEndpoint(endpoint: string): ReturnType<typeof snapshot> {
 
 export async function track(name: string, options: TokenWatchTrackOptions = {}): Promise<void> {
   const state = getState();
-  const record = createTrackRecord(name, state.projectId, state.identity, options);
+  const record = createTrackRecord(name, state.workspaceId, state.identity, options);
   await postJson(snapshot(), state.endpoint, record as unknown as Record<string, unknown>);
 }
 
@@ -34,7 +48,7 @@ export async function identify(id: string, traits?: Record<string, unknown>): Pr
   setIdentity(identity);
 
   const state = getState();
-  const record = createIdentifyRecord(id, state.projectId, traits);
+  const record = createIdentifyRecord(id, state.workspaceId, traits);
   await postJson(snapshot(), state.endpoint, record as unknown as Record<string, unknown>);
 
   return identity;
@@ -42,7 +56,7 @@ export async function identify(id: string, traits?: Record<string, unknown>): Pr
 
 export async function simulate(options: TokenWatchSimulationOptions = {}): Promise<ReturnType<typeof createSimulationRecord>> {
   const state = getState();
-  const record = createSimulationRecord(state.projectId, state.identity, options);
+  const record = createSimulationRecord(state.workspaceId, state.identity, options);
   await postJson(snapshot(), state.endpoint, record as unknown as Record<string, unknown>);
   return record;
 }

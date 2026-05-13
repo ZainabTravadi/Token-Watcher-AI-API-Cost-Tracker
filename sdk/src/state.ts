@@ -1,4 +1,4 @@
-import { DEFAULT_API_URL, DEFAULT_ENDPOINT, DEFAULT_PROJECT_ID } from "./defaults.js";
+import { DEFAULT_API_URL, DEFAULT_ENDPOINT } from "./defaults.js";
 import type { TokenWatchIdentity, TokenWatchStateSnapshot } from "./types.js";
 
 interface InternalState extends TokenWatchStateSnapshot {
@@ -9,8 +9,9 @@ interface InternalState extends TokenWatchStateSnapshot {
 
 const state: InternalState = {
   apiUrl: DEFAULT_API_URL,
+  apiKey: "",
+  workspaceId: "",
   endpoint: DEFAULT_ENDPOINT,
-  projectId: DEFAULT_PROJECT_ID,
   headers: {},
   identity: null,
   simulationTimer: null,
@@ -27,12 +28,16 @@ export function setConfig(partial: Partial<TokenWatchStateSnapshot>): TokenWatch
     state.apiUrl = partial.apiUrl;
   }
 
-  if (partial.endpoint) {
-    state.endpoint = partial.endpoint;
+  if (partial.apiKey) {
+    state.apiKey = partial.apiKey;
   }
 
-  if (partial.projectId) {
-    state.projectId = partial.projectId;
+  if (partial.workspaceId) {
+    state.workspaceId = partial.workspaceId;
+  }
+
+  if (partial.endpoint) {
+    state.endpoint = partial.endpoint;
   }
 
   if (partial.headers) {
@@ -63,8 +68,9 @@ export function setSimulationFlags(running: boolean, stopRequested: boolean): vo
 export function snapshot(): TokenWatchStateSnapshot {
   return {
     apiUrl: state.apiUrl,
+    apiKey: state.apiKey,
+    workspaceId: state.workspaceId,
     endpoint: state.endpoint,
-    projectId: state.projectId,
     headers: { ...state.headers },
     identity: state.identity ? { ...state.identity, traits: state.identity.traits ? { ...state.identity.traits } : undefined } : null
   };

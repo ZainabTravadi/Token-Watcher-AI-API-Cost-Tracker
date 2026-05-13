@@ -1,8 +1,9 @@
 export type TokenWatchProvider = "openai" | "anthropic" | (string & {});
 
 export interface TokenWatchInitOptions {
+  apiKey: string;
+  workspaceId: string;
   apiUrl: string;
-  projectId: string;
   endpoint?: string;
   headers?: Record<string, string>;
 }
@@ -32,7 +33,7 @@ export interface TokenWatchSimulationOptions {
 
 export interface TokenWatchTelemetryRecord {
   id: string;
-  projectId: string;
+  workspace_id: string;
   timestamp: number;
   event: string;
   route: string;
@@ -48,10 +49,12 @@ export interface TokenWatchTelemetryRecord {
   properties?: Record<string, unknown>;
 }
 
+
 export interface TokenWatchStateSnapshot {
   apiUrl: string;
+  apiKey: string;
+  workspaceId: string;
   endpoint: string;
-  projectId: string;
   headers: Record<string, string>;
   identity: TokenWatchIdentity | null;
 }

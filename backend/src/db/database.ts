@@ -5,15 +5,34 @@ import { getConfig } from "../config/env";
 import {
   createRequestsRouteIndexSql,
   createRequestsTableSql,
-  createRequestsTimestampIndexSql
+  createRequestsTimestampIndexSql,
+  createRequestsWorkspaceIndexSql,
+  createUsersTableSql,
+  createUsersEmailIndexSql,
+  createWorkspacesTableSql,
+  createWorkspacesUserIdIndexSql,
+  createApiKeysTableSql,
+  createApiKeysWorkspaceIdIndexSql,
+  createWorkspaceSettingsTableSql
 } from "./schema";
 
 let database: Database | null = null;
 
 function applySchema(db: Database): void {
+  // Auth tables
+  db.exec(createUsersTableSql);
+  db.exec(createUsersEmailIndexSql);
+  db.exec(createWorkspacesTableSql);
+  db.exec(createWorkspacesUserIdIndexSql);
+  db.exec(createApiKeysTableSql);
+  db.exec(createApiKeysWorkspaceIdIndexSql);
+  db.exec(createWorkspaceSettingsTableSql);
+  
+  // Requests table
   db.exec(createRequestsTableSql);
   db.exec(createRequestsTimestampIndexSql);
   db.exec(createRequestsRouteIndexSql);
+  db.exec(createRequestsWorkspaceIndexSql);
 }
 
 export function getDatabase(): Database {
