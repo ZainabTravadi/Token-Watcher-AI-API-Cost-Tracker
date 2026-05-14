@@ -5,6 +5,7 @@ import { buildRealtimeAnalyticsSnapshot } from "../services/analyticsService";
 import { getTelemetryCount } from "../services/telemetryRepository";
 import { startTelemetrySimulator } from "../services/simulatorService";
 import { startSdkDemo } from "../services/demoRunner";
+import { stopAllSimulators } from "../services/workspaceSimulatorManager";
 
 export async function startServer(): Promise<void> {
   const config = getConfig();
@@ -16,7 +17,7 @@ export async function startServer(): Promise<void> {
 
   const app = createApp();
 
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     const separator = "─".repeat(62);
     process.stdout.write(`\n${separator}\n`);
     process.stdout.write("TokenWatch backend started\n");
@@ -29,4 +30,17 @@ export async function startServer(): Promise<void> {
     process.stdout.write(`Analytics summary    $${analytics.overview.spendToday.toFixed(2)} today · ${analytics.overview.requestsToday.toLocaleString()} requests · ${(analytics.overview.errorRate * 100).toFixed(2)}% errors\n`);
     process.stdout.write(`${separator}\n\n`);
   });
+
+  // Graceful shutdown
+  const gracefulShutdown = () => {
+    console.info("\n[server] Shutting down gracefully...");
+    stopAllSimulators();
+    server.close(() => {
+      console.info("[server] Server closed");
+      process.exit(0);
+    });
+  };
+
+  process.on("SIGTERM", gracefulShutdown);
+  process.on("SIGINT", gracefulShutdown);
 }

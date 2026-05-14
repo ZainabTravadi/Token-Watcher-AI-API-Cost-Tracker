@@ -9,13 +9,55 @@ export type TelemetryProvider = "OpenAI" | "Anthropic";
 export type TelemetryModel = "gpt-4o" | "gpt-4o-mini" | "claude-sonnet" | "claude-haiku";
 export type TelemetryRoute = "/api/chat" | "/api/summarize" | "/api/search" | "/api/autocomplete" | "/api/agents";
 
+export type EnvironmentType = "development" | "staging" | "production";
+export type ReleaseChannel = "stable" | "beta" | "nightly";
+export type StreamStatusType = "connecting" | "live" | "reconnecting" | "offline";
+
+export interface VersionInfo {
+  full: string;
+  releaseChannel: ReleaseChannel;
+  buildTime: string;
+}
+
+export interface EnvironmentInfo {
+  name: EnvironmentType;
+  nodeEnv: string;
+  port: number;
+}
+
+export interface DatabaseStatus {
+  status: "connected" | "reconnecting" | "offline" | "degraded";
+  responseTime: number;
+  lastChecked: string;
+}
+
+export interface SimulatorStatus {
+  status: "starting" | "warming up" | "live" | "paused" | "offline";
+  startTime: string;
+  seededRows: number;
+  totalRows: number;
+}
+
+export interface TelemetryStatus {
+  totalRows: number;
+  status: "active" | "idle";
+}
+
+export interface StreamStatus {
+  status: StreamStatusType;
+  reconnectAttempts: number;
+  lastHeartbeat: string;
+}
+
 export interface HealthResponse {
   status: "ok";
-  database: string;
-  telemetry: string;
-  telemetryRows: number;
-  environment: string;
-  port: number;
+  version: VersionInfo;
+  environment: EnvironmentInfo;
+  database: DatabaseStatus;
+  simulator: SimulatorStatus;
+  telemetry: TelemetryStatus;
+  stream: StreamStatus;
+  timestamp: string;
 }
 
 export interface SimulatorStatusResponse {
@@ -83,7 +125,7 @@ export interface TelemetryRow {
   error: string | null;
 }
 
-export type TelemetryStreamStatus = "connecting" | "live" | "reconnecting" | "closed";
+export type TelemetryStreamStatus = StreamStatusType;
 
 const streamListeners = new Set<() => void>();
 let streamStatus: TelemetryStreamStatus = "connecting";
@@ -126,6 +168,23 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function fetchHealth(): Promise<HealthResponse> {
   return apiFetch<HealthResponse>("/api/health");
+}
+
+/**
+ * Extract JWT token from cookies
+ * EventSource doesn't support custom headers, so we need to pass the token as a query parameter
+ */
+export function getJwtToken(): string | null {
+  const name = "tokenwatch_auth";
+  const nameEQ = name + "=";
+  const cookies = document.cookie.split(";");
+  for (let cookie of cookies) {
+    cookie = cookie.trim();
+    if (cookie.startsWith(nameEQ)) {
+      return cookie.substring(nameEQ.length);
+    }
+  }
+  return null;
 }
 
 export async function fetchSimulatorStatus(): Promise<SimulatorStatusResponse> {
@@ -213,11 +272,11 @@ export function useTelemetryLiveRefresh(): void {
     source.addEventListener("seeded", refresh);
     source.addEventListener("connected", refresh);
     source.onerror = () => {
-      setStreamStatus(source.readyState === EventSource.CLOSED ? "closed" : "reconnecting");
+      setStreamStatus(source.readyState === EventSource.CLOSED ? "offline" : "reconnecting");
     };
 
     return () => {
-      setStreamStatus("closed");
+      setStreamStatus("offline");
       source.close();
     };
   }, [queryClient]);
@@ -239,8 +298,15 @@ export function useDashboardHealthLabel(): string {
       return "offline";
     }
 
-    return `live · ${data.telemetryRows.toLocaleString()} rows`;
+    return `live · ${formatTelemetryCount(data.telemetry.totalRows)}`;
   }, [data, isError, isLoading]);
+}
+
+export function formatTelemetryCount(count: number): string {
+  if (count === 0) return "0";
+  if (count < 1000) return count.toString();
+  if (count < 1_000_000) return `${(count / 1000).toFixed(1)}K`;
+  return `${(count / 1_000_000).toFixed(1)}M`;
 }
 
 export function apiBaseUrl(): string {

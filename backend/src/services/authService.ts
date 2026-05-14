@@ -94,6 +94,18 @@ export function createWorkspace(userId: string, name: string): Workspace | null 
     );
     settingsStmt.run(settingsId, workspaceId, true, true, 50, now, now);
 
+    // Generate API key for the workspace
+    generateWorkspaceApiKey(workspaceId);
+
+    // Start simulator for this workspace (async to not block signup)
+    try {
+      const { startWorkspaceSimulator } = require("./workspaceSimulatorManager");
+      setImmediate(() => startWorkspaceSimulator(workspaceId));
+    } catch (error) {
+      // Simulator startup is not critical for workspace creation
+      console.warn(`[createWorkspace] Failed to start simulator:`, error);
+    }
+
     return { id: workspaceId, user_id: userId, name, monthly_budget: 100, webhook_url: null, created_at: now, updated_at: now };
   } catch (error) {
     return null;
@@ -276,6 +288,18 @@ export function deleteWorkspace(workspaceId: string, userId: string): boolean {
     const db = getDatabase();
     const stmt = db.prepare("DELETE FROM workspaces WHERE id = ? AND user_id = ?");
     const result = stmt.run(workspaceId, userId);
+
+    // Stop simulator if it's running
+    if (result.changes > 0) {
+      try {
+        const { stopWorkspaceSimulator } = require("./workspaceSimulatorManager");
+        stopWorkspaceSimulator(workspaceId);
+      } catch (error) {
+        // Simulator cleanup is not critical
+        console.warn(`[deleteWorkspace] Failed to stop simulator:`, error);
+      }
+    }
+
     return result.changes > 0;
   } catch (error) {
     return false;

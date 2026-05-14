@@ -9,16 +9,19 @@ export interface AuthenticatedRequest extends Request {
 }
 
 /**
- * Middleware to authenticate user via JWT cookie or Authorization header
+ * Middleware to authenticate user via JWT cookie or Authorization header or query parameter
  */
 export function authenticateUser(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   try {
     const config = getConfig();
     
-    // Check for JWT in cookie or Authorization header
+    // Check for JWT in cookie, Authorization header, or query parameter
     let token = req.cookies?.["tokenwatch_auth"];
     if (!token && req.headers.authorization?.startsWith("Bearer ")) {
       token = req.headers.authorization.slice(7);
+    }
+    if (!token && typeof req.query.token === "string") {
+      token = req.query.token;
     }
 
     if (!token) {

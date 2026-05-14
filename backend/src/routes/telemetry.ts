@@ -4,6 +4,7 @@ import { telemetryBus } from "../services/telemetryBus";
 import { listLatestTelemetry } from "../services/telemetryRepository";
 import { getSimulatorStatus } from "../services/simulatorService";
 import { authenticateUser, attachWorkspaceOptional, type AuthenticatedRequest } from "../middleware/auth";
+import { getWorkspaceSimulatorStatus } from "../services/workspaceSimulatorManager";
 
 export function createTelemetryRouter(): Router {
   const router = Router();
@@ -31,6 +32,21 @@ export function createTelemetryRouter(): Router {
   router.get("/telemetry/status", (_request, response) => {
     response.json({ data: getSimulatorStatus() });
   });
+
+  // Get workspace-specific simulator status
+  router.get(
+    "/telemetry/workspace-simulator-status",
+    authenticateUser,
+    attachWorkspaceOptional,
+    (request: AuthenticatedRequest, response) => {
+      if (!request.workspaceId) {
+        response.status(400).json({ error: "Workspace ID required" });
+        return;
+      }
+      const status = getWorkspaceSimulatorStatus(request.workspaceId);
+      response.json({ data: status || { running: false, recordsGenerated: 0, uptime: 0 } });
+    }
+  );
 
   router.get(
     "/telemetry/stream",
