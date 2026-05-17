@@ -90,36 +90,42 @@ export function Sidebar() {
       const itemCount = NAV_ITEMS.length;
 
       switch (e.key) {
-        case "ArrowDown":
+        case "ArrowDown": {
           e.preventDefault();
           const nextIndex = activeNavIndex + 1 < itemCount ? activeNavIndex + 1 : 0;
           navRefs.current[nextIndex]?.focus();
           break;
+        }
 
-        case "ArrowUp":
+        case "ArrowUp": {
           e.preventDefault();
           const prevIndex = activeNavIndex - 1 >= 0 ? activeNavIndex - 1 : itemCount - 1;
           navRefs.current[prevIndex]?.focus();
           break;
+        }
 
-        case "Home":
+        case "Home": {
           e.preventDefault();
           navRefs.current[0]?.focus();
           break;
+        }
 
-        case "End":
+        case "End": {
           e.preventDefault();
           navRefs.current[itemCount - 1]?.focus();
           break;
+        }
 
-        case "Enter":
+        case "Enter": {
           if (document.activeElement?.tagName === "A") {
             (document.activeElement as HTMLAnchorElement).click();
           }
           break;
+        }
 
-        default:
+        default: {
           break;
+        }
       }
     },
     [activeNavIndex]

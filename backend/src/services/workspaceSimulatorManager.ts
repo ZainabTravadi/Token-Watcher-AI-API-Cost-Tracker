@@ -29,10 +29,9 @@ export function startWorkspaceSimulator(workspaceId: string): boolean {
 
   try {
     // Get or create API key for this workspace
-    let apiKey = getWorkspaceApiKey(workspaceId);
-    if (!apiKey) {
-      apiKey = regenerateWorkspaceApiKey(workspaceId);
-      if (!apiKey) {
+    if (!getWorkspaceApiKey(workspaceId)) {
+      const regeneratedKey = regenerateWorkspaceApiKey(workspaceId);
+      if (!regeneratedKey) {
         console.warn(`[workspace-simulator] Failed to create API key for workspace ${workspaceId}`);
         return false;
       }
@@ -135,9 +134,9 @@ function generateTelemetryBatch(workspaceId: string, count: number, isSeeding: b
   const records: IngestTelemetryInput[] = [];
 
   for (let i = 0; i < count; i++) {
-    const route = ROUTES[Math.floor(Math.random() * ROUTES.length)];
-    const model = MODELS[Math.floor(Math.random() * MODELS.length)];
-    const provider = PROVIDERS[Math.floor(Math.random() * PROVIDERS.length)];
+    const route = pickRandom(ROUTES);
+    const model = pickRandom(MODELS);
+    const provider = pickRandom(PROVIDERS);
 
     // Determine if this is an error (5% chance)
     const isError = Math.random() < 0.05;
@@ -164,9 +163,9 @@ function generateTelemetryBatch(workspaceId: string, count: number, isSeeding: b
 
     records.push({
       timestamp,
-      route,
-      model,
-      provider,
+      route: route as string,
+      model: model as string,
+      provider: provider as string,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       total_tokens: totalTokens,
@@ -184,4 +183,12 @@ function generateTelemetryBatch(workspaceId: string, count: number, isSeeding: b
   }
 
   return records;
+}
+
+function pickRandom<T>(values: readonly T[]): T {
+  const value = values[Math.floor(Math.random() * values.length)];
+  if (value === undefined) {
+    throw new Error("Cannot pick a random value from an empty list");
+  }
+  return value;
 }

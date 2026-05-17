@@ -15,6 +15,10 @@ import {
 export function createWorkspacesRouter(): Router {
   const router = Router();
 
+  const getWorkspaceId = (req: AuthenticatedRequest): string | null => {
+    return typeof req.params.id === "string" ? req.params.id : null;
+  };
+
   /**
    * List workspaces for authenticated user
    * GET /api/workspaces
@@ -40,7 +44,13 @@ export function createWorkspacesRouter(): Router {
    */
   router.get("/:id", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
     try {
-      const workspace = getWorkspace(req.params.id, req.userId!);
+      const workspaceId = getWorkspaceId(req);
+      if (!workspaceId) {
+        res.status(400).json({ error: "Workspace ID required" });
+        return;
+      }
+
+      const workspace = getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
@@ -63,7 +73,13 @@ export function createWorkspacesRouter(): Router {
    */
   router.put("/:id", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
     try {
-      const workspace = getWorkspace(req.params.id, req.userId!);
+      const workspaceId = getWorkspaceId(req);
+      if (!workspaceId) {
+        res.status(400).json({ error: "Workspace ID required" });
+        return;
+      }
+
+      const workspace = getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
@@ -75,7 +91,7 @@ export function createWorkspacesRouter(): Router {
       if (monthly_budget !== undefined) updates.monthly_budget = monthly_budget;
       if (webhook_url !== undefined) updates.webhook_url = webhook_url;
 
-      const updated = updateWorkspace(req.params.id, req.userId!, updates);
+      const updated = updateWorkspace(workspaceId, req.userId!, updates);
       if (!updated) {
         res.status(500).json({ error: "Failed to update workspace" });
         return;
@@ -98,7 +114,13 @@ export function createWorkspacesRouter(): Router {
    */
   router.put("/:id/settings", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
     try {
-      const workspace = getWorkspace(req.params.id, req.userId!);
+      const workspaceId = getWorkspaceId(req);
+      if (!workspaceId) {
+        res.status(400).json({ error: "Workspace ID required" });
+        return;
+      }
+
+      const workspace = getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
@@ -110,7 +132,7 @@ export function createWorkspacesRouter(): Router {
       if (alert_on_errors !== undefined) updates.alert_on_errors = alert_on_errors;
       if (alert_cost_threshold !== undefined) updates.alert_cost_threshold = alert_cost_threshold;
 
-      const settings = updateWorkspaceSettings(req.params.id, updates);
+      const settings = updateWorkspaceSettings(workspaceId, updates);
       if (!settings) {
         res.status(500).json({ error: "Failed to update settings" });
         return;
@@ -129,13 +151,19 @@ export function createWorkspacesRouter(): Router {
    */
   router.post("/:id/api-keys/regenerate", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
     try {
-      const workspace = getWorkspace(req.params.id, req.userId!);
+      const workspaceId = getWorkspaceId(req);
+      if (!workspaceId) {
+        res.status(400).json({ error: "Workspace ID required" });
+        return;
+      }
+
+      const workspace = getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
       }
 
-      const newKey = regenerateWorkspaceApiKey(req.params.id);
+      const newKey = regenerateWorkspaceApiKey(workspaceId);
       if (!newKey) {
         res.status(500).json({ error: "Failed to regenerate API key" });
         return;
@@ -154,13 +182,19 @@ export function createWorkspacesRouter(): Router {
    */
   router.delete("/:id", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
     try {
-      const workspace = getWorkspace(req.params.id, req.userId!);
+      const workspaceId = getWorkspaceId(req);
+      if (!workspaceId) {
+        res.status(400).json({ error: "Workspace ID required" });
+        return;
+      }
+
+      const workspace = getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
       }
 
-      const success = deleteWorkspace(req.params.id, req.userId!);
+      const success = deleteWorkspace(workspaceId, req.userId!);
       if (!success) {
         res.status(500).json({ error: "Failed to delete workspace" });
         return;

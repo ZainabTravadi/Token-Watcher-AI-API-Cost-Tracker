@@ -5,6 +5,8 @@ import { listLatestTelemetry } from "../services/telemetryRepository";
 import { getSimulatorStatus } from "../services/simulatorService";
 import { authenticateUser, attachWorkspaceOptional, type AuthenticatedRequest } from "../middleware/auth";
 import { getWorkspaceSimulatorStatus } from "../services/workspaceSimulatorManager";
+import { getUserWorkspaces, getWorkspace } from "../services/authService";
+import type { TelemetryRecord } from "../types/telemetry";
 
 export function createTelemetryRouter(): Router {
   const router = Router();
@@ -53,11 +55,23 @@ export function createTelemetryRouter(): Router {
     authenticateUser,
     attachWorkspaceOptional,
     (request: AuthenticatedRequest, response) => {
-      if (!request.workspaceId) {
-        response.status(400).json({ error: "Workspace ID required" });
+      const workspaceId =
+        request.workspaceId ||
+        (typeof request.query.workspaceId === "string" ? request.query.workspaceId : undefined) ||
+        getUserWorkspaces(request.userId ?? "")[0]?.id;
+
+      if (!request.userId) {
+        response.status(401).json({ error: "Unauthorized" });
         return;
       }
-      setupSse(request, response, request.workspaceId);
+
+      const ownedWorkspace = workspaceId ? getWorkspace(workspaceId, request.userId) : null;
+
+      if (!ownedWorkspace) {
+        response.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      setupSse(request, response, ownedWorkspace.id);
     }
   );
 
@@ -77,7 +91,7 @@ function setupSse(request: Request, response: Response, workspaceId: string): vo
   };
 
   // Filter telemetry events by workspace
-  const telemetryHandler = (record: any): void => {
+  const telemetryHandler = (record: TelemetryRecord): void => {
     if (record.workspace_id === workspaceId) {
       send("telemetry", record);
     }

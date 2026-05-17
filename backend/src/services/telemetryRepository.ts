@@ -1,4 +1,5 @@
 import { getDatabase } from "../db/database";
+import { getWorkspace } from "./authService";
 import type {
   AnalyticsEndpointRow,
   AnalyticsModelRow,
@@ -6,6 +7,7 @@ import type {
   AnalyticsSnapshot,
   TelemetryRecord
 } from "../types/telemetry";
+import type { RequestLogQuery, RequestLogResponse } from "../types/requests";
 
 type TelemetryRow = TelemetryRecord;
 
@@ -77,6 +79,86 @@ export function listLatestTelemetry(workspaceId: string, limit = 100): Telemetry
   return db.prepare(sql).all(workspaceId, limit) as TelemetryRow[];
 }
 
+export function listRequestLog(workspaceId: string, query: RequestLogQuery = {}): RequestLogResponse {
+  const db = getDatabase();
+  const page = Math.max(1, Math.trunc(query.page ?? 1));
+  const limit = Math.min(200, Math.max(1, Math.trunc(query.limit ?? 50)));
+  const route = query.route && query.route !== "all" ? query.route : undefined;
+  const models = (query.model ?? []).filter(Boolean);
+
+  const filters: string[] = ["workspace_id = ?"];
+  const params: Array<string | number> = [workspaceId];
+  const countParams: Array<string | number> = [workspaceId];
+
+  if (route) {
+    filters.push("route = ?");
+    params.push(route);
+    countParams.push(route);
+  }
+
+  if (models.length > 0) {
+    filters.push(`model IN (${models.map(() => "?").join(", ")})`);
+    params.push(...models);
+    countParams.push(...models);
+  }
+
+  const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+  const cursor = typeof query.cursor === "string" && query.cursor.includes(":") ? query.cursor : null;
+  let cursorClause = "";
+  const cursorParams: Array<number> = [];
+  if (cursor) {
+    const [cursorTimestamp, cursorId] = cursor.split(":").map((value) => Number(value));
+    if (Number.isFinite(cursorTimestamp) && Number.isFinite(cursorId)) {
+      const safeCursorTimestamp = cursorTimestamp as number;
+      const safeCursorId = cursorId as number;
+      cursorClause = ` AND (timestamp < ? OR (timestamp = ? AND id < ?))`;
+      cursorParams.push(safeCursorTimestamp, safeCursorTimestamp, safeCursorId);
+    }
+  }
+
+  const countSql = `SELECT COUNT(*) AS count FROM requests ${where};`;
+  const total = db.prepare(countSql).get(...countParams) as { count: number };
+
+  const offset = cursor ? 0 : (page - 1) * limit;
+  const logSql = `
+    SELECT
+      id,
+      workspace_id,
+      timestamp,
+      route,
+      model,
+      provider,
+      input_tokens,
+      output_tokens,
+      total_tokens,
+      cost_usd,
+      latency_ms,
+      error
+    FROM requests
+    ${where}
+    ${cursorClause}
+    ORDER BY timestamp DESC, id DESC
+    LIMIT ?
+    ${cursor ? "" : "OFFSET ?"};
+  `;
+
+  const rows = cursor
+    ? (db.prepare(logSql).all(...params, ...cursorParams, limit) as TelemetryRow[])
+    : (db.prepare(logSql).all(...params, limit, offset) as TelemetryRow[]);
+
+  const lastRow = rows.at(-1);
+  const nextCursor = lastRow ? `${lastRow.timestamp}:${lastRow.id}` : null;
+
+  return {
+    data: rows,
+    page,
+    limit,
+    total: total?.count ?? 0,
+    hasMore: cursor ? rows.length === limit : page * limit < (total?.count ?? 0),
+    nextCursor
+  };
+}
+
 export function getAnalyticsSnapshot(workspaceId: string, hours = 24): AnalyticsSnapshot {
   const db = getDatabase();
   const since = Date.now() - hours * 60 * 60 * 1000;
@@ -114,6 +196,8 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
       provider,
       COUNT(*) AS requests,
       COALESCE(SUM(total_tokens), 0) AS tokens,
+      COALESCE(SUM(input_tokens), 0) AS input_tokens,
+      COALESCE(SUM(output_tokens), 0) AS output_tokens,
       COALESCE(SUM(cost_usd), 0) AS cost_usd,
       COALESCE(AVG(latency_ms), 0) AS avg_latency_ms
     FROM requests
@@ -127,6 +211,7 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
       timestamp,
       route,
       model,
+      provider,
       input_tokens,
       output_tokens,
       cost_usd,
@@ -164,6 +249,7 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
     timestamp: number;
     route: string;
     model: string;
+    provider: string;
     input_tokens: number;
     output_tokens: number;
     cost_usd: number;
@@ -175,6 +261,7 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
     ts: new Date(row.timestamp).toISOString().slice(0, 19).replace("T", " "),
     endpoint: row.route as AnalyticsRecentRow["endpoint"],
     model: row.model as AnalyticsRecentRow["model"],
+    provider: row.provider as AnalyticsRecentRow["provider"],
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
     cost: row.cost_usd,
@@ -185,13 +272,14 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
   const spendToday = overviewRow?.spendToday ?? 0;
   const avgCostPerRequest = overviewRow?.avgCostPerRequest ?? 0;
   const errorCount = overviewRow?.errorCount ?? 0;
+  const workspaceBudget = getWorkspace(workspaceId)?.monthly_budget ?? 100;
 
   return {
     overview: {
       spendToday,
       requestsToday,
       avgCostPerRequest,
-      budget: 500,
+      budget: workspaceBudget,
       errorRate: requestsToday > 0 ? errorCount / requestsToday : 0,
       errors429: overviewRow?.errors429 ?? 0,
       errors500: overviewRow?.errors500 ?? 0

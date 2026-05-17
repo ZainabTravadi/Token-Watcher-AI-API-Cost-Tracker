@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState } from "react";
 
 const API_BASE_URL = import.meta.env.VITE_TOKENWATCH_API_URL ?? "http://localhost:3001";
@@ -17,13 +18,14 @@ export interface WorkspaceInfo {
   created_at: number;
   updated_at: number;
   apiKey?: { id: string; created_at: number } | null;
-  settings?: any;
+  settings?: Record<string, unknown> | null;
 }
 
 interface AuthContextType {
   user: AuthUser | null;
   workspaces: WorkspaceInfo[] | null;
   currentWorkspace: WorkspaceInfo | null;
+  isAuthReady: boolean;
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[] | null>(null);
   const [currentWorkspace, setCurrentWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setWorkspaces(null);
       } finally {
         setIsLoading(false);
+        setIsAuthReady(true);
       }
     };
 
@@ -186,6 +190,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         workspaces,
         currentWorkspace,
+        isAuthReady,
         isLoading,
         error,
         login,

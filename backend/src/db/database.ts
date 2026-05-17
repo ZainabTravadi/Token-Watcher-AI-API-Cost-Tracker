@@ -6,6 +6,9 @@ import {
   createRequestsRouteIndexSql,
   createRequestsTableSql,
   createRequestsTimestampIndexSql,
+  createRequestsWorkspaceModelTimestampIndexSql,
+  createRequestsWorkspaceRouteTimestampIndexSql,
+  createRequestsWorkspaceTimestampIndexSql,
   createRequestsWorkspaceIndexSql,
   createUsersTableSql,
   createUsersEmailIndexSql,
@@ -31,7 +34,10 @@ function applySchema(db: Database): void {
   // Requests table
   db.exec(createRequestsTableSql);
   db.exec(createRequestsTimestampIndexSql);
+  db.exec(createRequestsWorkspaceTimestampIndexSql);
   db.exec(createRequestsRouteIndexSql);
+  db.exec(createRequestsWorkspaceRouteTimestampIndexSql);
+  db.exec(createRequestsWorkspaceModelTimestampIndexSql);
   db.exec(createRequestsWorkspaceIndexSql);
 }
 

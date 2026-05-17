@@ -96,7 +96,7 @@ const routeModelMap: Record<TelemetryRoute, Array<{ value: TelemetryModel; weigh
   ]
 };
 
-export function generateTelemetryRecord(timestamp = Date.now()): Omit<SimulatedTelemetryRecord, "id"> {
+export function generateTelemetryRecord(workspaceId: string, timestamp = Date.now()): Omit<SimulatedTelemetryRecord, "id" | "workspace_id"> {
   const route = weightedPick(routeWeights);
   const model = weightedPick(routeModelMap[route]);
   const profile = modelProfiles[model];
@@ -130,8 +130,8 @@ export function generateTelemetryRecord(timestamp = Date.now()): Omit<SimulatedT
   };
 }
 
-export function generateTelemetryBatch(now = Date.now(), count = 1): Array<Omit<SimulatedTelemetryRecord, "id">> {
-  return Array.from({ length: count }, (_, index) => generateTelemetryRecord(now - index * randomInt(120, 12_000)));
+export function generateTelemetryBatch(workspaceId: string, now = Date.now(), count = 1): Array<Omit<SimulatedTelemetryRecord, "id" | "workspace_id">> {
+  return Array.from({ length: count }, (_, index) => generateTelemetryRecord(workspaceId, now - index * randomInt(120, 12_000)));
 }
 
 export function estimateBurstSize(now = new Date()): number {
@@ -141,14 +141,14 @@ export function estimateBurstSize(now = new Date()): number {
   return Math.max(1, Math.round(baseline * hourFactor * spikeFactor));
 }
 
-export function generateHistoricalDataset(days = 7): Array<Omit<SimulatedTelemetryRecord, "id">> {
-  const events: Array<Omit<SimulatedTelemetryRecord, "id">> = [];
+export function generateHistoricalDataset(workspaceId: string, days = 7): Array<Omit<SimulatedTelemetryRecord, "id" | "workspace_id">> {
+  const events: Array<Omit<SimulatedTelemetryRecord, "id" | "workspace_id">> = [];
   const end = Date.now();
   const start = end - days * 24 * 60 * 60 * 1000;
 
   for (let ts = start; ts < end; ts += randomInt(12_000, 45_000)) {
     const burst = estimateBurstSize(new Date(ts));
-    events.push(...generateTelemetryBatch(ts, burst));
+    events.push(...generateTelemetryBatch(workspaceId, ts, burst));
   }
 
   return events.sort((a, b) => a.timestamp - b.timestamp);

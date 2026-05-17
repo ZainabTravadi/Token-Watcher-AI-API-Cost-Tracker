@@ -49,7 +49,7 @@ export function createAuthRouter(): Router {
       }
 
       // Generate initial API key
-      const apiKey = generateWorkspaceApiKey(workspace.id);
+      const apiKeyString = generateWorkspaceApiKey(workspace.id);
 
       // Create JWT token
       const config = getConfig();
@@ -62,13 +62,20 @@ export function createAuthRouter(): Router {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
+      res.cookie("tokenwatch_stream", token, {
+        httpOnly: false,
+        secure: config.nodeEnv === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
       const settings = getWorkspaceSettings(workspace.id);
 
       res.status(201).json({
         user: { id: user.id, email: user.email, created_at: user.created_at },
         workspace: {
           ...workspace,
-          apiKey: apiKey ? { id: apiKey.id, created_at: apiKey.created_at } : null,
+          apiKey: apiKeyString ? { key: apiKeyString } : null,
           settings,
         },
       });
@@ -108,6 +115,13 @@ export function createAuthRouter(): Router {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
+      res.cookie("tokenwatch_stream", token, {
+        httpOnly: false,
+        secure: config.nodeEnv === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
       res.status(200).json({
         user: { id: user.id, email: user.email },
       });
@@ -123,6 +137,7 @@ export function createAuthRouter(): Router {
    */
   router.post("/logout", (req: Request, res: Response) => {
     res.clearCookie("tokenwatch_auth");
+    res.clearCookie("tokenwatch_stream");
     res.status(200).json({ ok: true });
   });
 

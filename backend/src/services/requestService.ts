@@ -1,5 +1,5 @@
 import type { CreateRequestRecordInput, RequestRecord } from "../types/requests";
-import { insertTelemetry, listLatestTelemetry } from "./telemetryRepository";
+import { insertTelemetry, listLatestTelemetry, listRequestLog } from "./telemetryRepository";
 import type { TelemetryRecord } from "../types/telemetry";
 
 export function recordRequest(workspaceId: string, input: CreateRequestRecordInput): RequestRecord {
@@ -20,4 +20,8 @@ export function recordRequest(workspaceId: string, input: CreateRequestRecordInp
 
 export function listLatestRequests(workspaceId: string, limit = 100): RequestRecord[] {
   return listLatestTelemetry(workspaceId, limit);
+}
+
+export function listRequestLogRecords(workspaceId: string, options: Parameters<typeof listRequestLog>[1] = {}) {
+  return listRequestLog(workspaceId, options);
 }

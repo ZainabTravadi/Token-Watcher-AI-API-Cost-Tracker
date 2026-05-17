@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useSyncExternalStore } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 const API_BASE_URL = import.meta.env.VITE_TOKENWATCH_API_URL ?? "http://localhost:3001";
 
 export { API_BASE_URL };
 
-export type TelemetryProvider = "OpenAI" | "Anthropic";
+export type TelemetryProvider = "OpenAI" | "Anthropic" | "Google";
 export type TelemetryModel = "gpt-4o" | "gpt-4o-mini" | "claude-sonnet" | "claude-haiku";
 export type TelemetryRoute = "/api/chat" | "/api/summarize" | "/api/search" | "/api/autocomplete" | "/api/agents";
 
 export type EnvironmentType = "development" | "staging" | "production";
 export type ReleaseChannel = "stable" | "beta" | "nightly";
-export type StreamStatusType = "connecting" | "live" | "reconnecting" | "offline";
+export type StreamStatusType = "connecting" | "live" | "reconnecting" | "offline" | "unauthorized";
 
 export interface VersionInfo {
   full: string;
@@ -74,6 +74,7 @@ export interface AnalyticsOverview {
   errorRate: number;
   errors429: number;
   errors500: number;
+  errorsNetwork?: number;
 }
 
 export interface AnalyticsEndpointRow {
@@ -89,6 +90,8 @@ export interface AnalyticsModelRow {
   provider: TelemetryProvider;
   requests: number;
   tokens: number;
+  input_tokens: number;
+  output_tokens: number;
   cost_usd: number;
   avg_latency_ms: number;
 }
@@ -97,6 +100,7 @@ export interface AnalyticsRecentRow {
   ts: string;
   endpoint: TelemetryRoute;
   model: TelemetryModel;
+  provider: TelemetryProvider;
   inputTokens: number;
   outputTokens: number;
   cost: number;
@@ -113,6 +117,7 @@ export interface AnalyticsSnapshot {
 
 export interface TelemetryRow {
   id: number;
+  workspace_id: string;
   timestamp: number;
   route: TelemetryRoute;
   model: TelemetryModel;
@@ -125,10 +130,36 @@ export interface TelemetryRow {
   error: string | null;
 }
 
+export interface RequestLogQuery {
+  page?: number;
+  limit?: number;
+  route?: TelemetryRoute | "all";
+  model?: TelemetryModel[];
+  cursor?: string;
+}
+
+export interface RequestLogResponse {
+  data: TelemetryRow[];
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
 export type TelemetryStreamStatus = StreamStatusType;
 
 const streamListeners = new Set<() => void>();
 let streamStatus: TelemetryStreamStatus = "connecting";
+let requestLogRefreshEnabled = true;
+
+export function setRequestLogRefreshEnabled(enabled: boolean): void {
+  requestLogRefreshEnabled = enabled;
+}
+
+export function isRequestLogRefreshEnabled(): boolean {
+  return requestLogRefreshEnabled;
+}
 
 function setStreamStatus(status: TelemetryStreamStatus): void {
   if (status === streamStatus) {
@@ -141,6 +172,9 @@ function setStreamStatus(status: TelemetryStreamStatus): void {
   }
 }
 
+// Exported setter so external owners of the EventSource (eg. StatusContext)
+// can update the shared stream status and drive query invalidation logic.
+export { setStreamStatus };
 function subscribeStreamStatus(listener: () => void): () => void {
   streamListeners.add(listener);
   return () => {
@@ -149,9 +183,10 @@ function subscribeStreamStatus(listener: () => void): () => void {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const hasBody = init?.body !== undefined && init?.body !== null;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers ?? {})
     },
     credentials: "include",
@@ -175,13 +210,15 @@ export async function fetchHealth(): Promise<HealthResponse> {
  * EventSource doesn't support custom headers, so we need to pass the token as a query parameter
  */
 export function getJwtToken(): string | null {
-  const name = "tokenwatch_auth";
-  const nameEQ = name + "=";
+  const preferredNames = ["tokenwatch_stream", "tokenwatch_auth"];
   const cookies = document.cookie.split(";");
-  for (let cookie of cookies) {
-    cookie = cookie.trim();
-    if (cookie.startsWith(nameEQ)) {
-      return cookie.substring(nameEQ.length);
+  for (const name of preferredNames) {
+    const nameEQ = name + "=";
+    for (let cookie of cookies) {
+      cookie = cookie.trim();
+      if (cookie.startsWith(nameEQ)) {
+        return cookie.substring(nameEQ.length);
+      }
     }
   }
   return null;
@@ -206,6 +243,24 @@ export async function fetchTelemetryRows(workspaceId?: string, limit = 500): Pro
   return response.data;
 }
 
+export async function fetchRequestLog(workspaceId?: string, query: RequestLogQuery = {}): Promise<RequestLogResponse> {
+  const params = new URLSearchParams();
+
+  if (workspaceId) params.set("workspaceId", workspaceId);
+  if (query.page) params.set("page", String(query.page));
+  if (query.limit) params.set("limit", String(query.limit));
+  if (query.route && query.route !== "all") params.set("route", query.route);
+  if (query.cursor) params.set("cursor", query.cursor);
+  if (query.model && query.model.length > 0) {
+    for (const model of query.model) {
+      params.append("model", model);
+    }
+  }
+
+  const response = await apiFetch<{ data: RequestLogResponse }>(`/api/requests?${params.toString()}`);
+  return response.data;
+}
+
 export function useHealthQuery() {
   return useQuery({
     queryKey: ["health"],
@@ -227,10 +282,11 @@ export function useSimulatorStatusQuery() {
 }
 
 export function useAnalyticsSnapshotQuery(workspaceId?: string) {
+  const streamStatus = useTelemetryStreamStatus();
   return useQuery({
     queryKey: ["analytics-snapshot", workspaceId],
     queryFn: () => fetchAnalyticsSnapshot(workspaceId),
-    refetchInterval: 5_000,
+    refetchInterval: streamStatus === "offline" || streamStatus === "unauthorized" ? 5_000 : false,
     staleTime: 2_000,
     retry: 1,
     enabled: !!workspaceId
@@ -238,10 +294,11 @@ export function useAnalyticsSnapshotQuery(workspaceId?: string) {
 }
 
 export function useTelemetryRowsQuery(workspaceId?: string, limit = 500) {
+  const streamStatus = useTelemetryStreamStatus();
   return useQuery({
     queryKey: ["telemetry-rows", workspaceId, limit],
     queryFn: () => fetchTelemetryRows(workspaceId, limit),
-    refetchInterval: 4_000,
+    refetchInterval: streamStatus === "offline" || streamStatus === "unauthorized" ? 4_000 : false,
     staleTime: 1_000,
     retry: 1,
     enabled: !!workspaceId
@@ -249,37 +306,10 @@ export function useTelemetryRowsQuery(workspaceId?: string, limit = 500) {
 }
 
 export function useTelemetryLiveRefresh(): void {
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    setStreamStatus("connecting");
-    const source = new EventSource(`${API_BASE_URL}/api/telemetry/stream`, {
-      withCredentials: true
-    });
-
-    source.onopen = () => {
-      setStreamStatus("live");
-    };
-
-    const refresh = (): void => {
-      void queryClient.invalidateQueries({ queryKey: ["analytics-snapshot"] });
-      void queryClient.invalidateQueries({ queryKey: ["telemetry-rows"] });
-      void queryClient.invalidateQueries({ queryKey: ["health"] });
-      void queryClient.invalidateQueries({ queryKey: ["simulator-status"] });
-    };
-
-    source.addEventListener("telemetry", refresh);
-    source.addEventListener("seeded", refresh);
-    source.addEventListener("connected", refresh);
-    source.onerror = () => {
-      setStreamStatus(source.readyState === EventSource.CLOSED ? "offline" : "reconnecting");
-    };
-
-    return () => {
-      setStreamStatus("offline");
-      source.close();
-    };
-  }, [queryClient]);
+  // Deprecated: SSE ownership is managed by StatusContext in the app
+  // to avoid duplicate EventSource instances. Keep a no-op hook so
+  // existing imports remain valid and tests won't fail.
+  return;
 }
 
 export function useTelemetryStreamStatus(): TelemetryStreamStatus {
@@ -311,4 +341,19 @@ export function formatTelemetryCount(count: number): string {
 
 export function apiBaseUrl(): string {
   return API_BASE_URL;
+}
+
+export function useRequestLogQuery(workspaceId?: string, query: RequestLogQuery = {}) {
+  const streamStatus = useTelemetryStreamStatus();
+  const modelsKey = (query.model ?? []).slice().sort().join(",");
+
+  return useQuery({
+    queryKey: ["request-log", workspaceId, query.page ?? 1, query.limit ?? 50, query.route ?? "all", modelsKey, query.cursor ?? ""],
+    queryFn: () => fetchRequestLog(workspaceId, query),
+    refetchInterval: streamStatus === "offline" || streamStatus === "unauthorized" ? 5_000 : false,
+    staleTime: 1_000,
+    retry: 1,
+    enabled: !!workspaceId,
+    placeholderData: keepPreviousData
+  });
 }

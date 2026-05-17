@@ -70,7 +70,7 @@ export function seedTelemetryDataset(force = false): number {
   }
 
   const workspaceId = getDemoWorkspaceId();
-  const records = generateHistoricalDataset(7);
+  const records = generateHistoricalDataset(workspaceId, 7);
   
   // Add workspace_id to all records
   const recordsWithWorkspace = records.map((r) => ({ ...r, workspace_id: workspaceId }));

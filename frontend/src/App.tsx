@@ -26,6 +26,11 @@ const queryClient = new QueryClient({
   },
 });
 
+const routerFuture = {
+  v7_startTransition: true,
+  v7_relativeSplatPath: true,
+} as const;
+
 const router = createBrowserRouter(
   [
     { path: "/", element: <Index /> },
@@ -73,12 +78,7 @@ const router = createBrowserRouter(
     },
     { path: "*", element: <NotFound /> },
   ],
-  {
-    future: {
-      v7_startTransition: true,
-      v7_relativeSplatPath: true,
-    },
-  }
+  { future: routerFuture }
 );
 
 const App = () => (
@@ -88,7 +88,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <RouterProvider router={router} />
+          <RouterProvider router={router} future={routerFuture} />
         </TooltipProvider>
       </StatusProvider>
     </AuthProvider>

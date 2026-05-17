@@ -1,21 +1,24 @@
+/* eslint-disable react-refresh/only-export-components */
 import { fmtUSD, fmtNum } from "@/lib/data";
 
 type Col<T> = {
-  key: keyof T | string;
+  key: keyof T;
   label: string;
   align?: "left" | "right";
   render?: (row: T) => React.ReactNode;
   width?: string;
 };
 
-export function DataTable<T extends Record<string, any>>({
+export function DataTable<T extends Record<string, unknown>>({
   columns,
   rows,
   onRowClick,
+  getRowKey,
 }: {
   columns: Col<T>[];
   rows: T[];
   onRowClick?: (row: T) => void;
+  getRowKey?: (row: T, index: number) => React.Key;
 }) {
   return (
     <div className="border-t border-hairline">
@@ -36,7 +39,12 @@ export function DataTable<T extends Record<string, any>>({
         <tbody>
           {rows.map((row, i) => (
             <tr
-              key={i}
+              key={
+                getRowKey?.(row, i) ?? String((() => {
+                  const r = row as Record<string, unknown>;
+                  return r.id ?? r.route ?? r.model ?? r.timestamp ?? i;
+                })())
+              }
               onClick={() => onRowClick?.(row)}
               className={`border-b border-hairline/60 hover:bg-secondary/60 ${onRowClick ? "cursor-pointer" : ""}`}
             >
@@ -45,7 +53,14 @@ export function DataTable<T extends Record<string, any>>({
                   key={String(c.key)}
                   className={`py-2.5 px-3 text-sm ${c.align === "right" ? "text-right num" : ""}`}
                 >
-                  {c.render ? c.render(row) : (row as any)[c.key]}
+                  {c.render
+                    ? c.render(row)
+                    : (() => {
+                        const value = (row as Record<string, unknown>)[c.key as string];
+                        if (value === null || value === undefined) return "";
+                        if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") return String(value);
+                        return String(value);
+                      })()}
                 </td>
               ))}
             </tr>

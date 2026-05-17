@@ -1,4 +1,4 @@
-export type TelemetryProvider = "OpenAI" | "Anthropic";
+export type TelemetryProvider = "OpenAI" | "Anthropic" | "Google";
 
 export type TelemetryModel = "gpt-4o" | "gpt-4o-mini" | "claude-sonnet" | "claude-haiku";
 
@@ -34,6 +34,8 @@ export interface AnalyticsModelRow {
   provider: TelemetryProvider;
   requests: number;
   tokens: number;
+  input_tokens: number;
+  output_tokens: number;
   cost_usd: number;
   avg_latency_ms: number;
 }
@@ -42,6 +44,7 @@ export interface AnalyticsRecentRow {
   ts: string;
   endpoint: TelemetryRoute;
   model: TelemetryModel;
+  provider: TelemetryProvider;
   inputTokens: number;
   outputTokens: number;
   cost: number;
@@ -56,6 +59,7 @@ export interface AnalyticsOverview {
   errorRate: number;
   errors429: number;
   errors500: number;
+  errorsNetwork?: number;
 }
 
 export interface AnalyticsSnapshot {

@@ -6,6 +6,7 @@ import { getConfig } from "../config/env";
 export function createApp(): Express {
   const app = express();
   const config = getConfig();
+  const allowedOrigins = new Set(config.corsOrigin);
 
   app.disable("x-powered-by");
   
@@ -15,36 +16,15 @@ export function createApp(): Express {
 
   // CORS
   app.use((request, response, next) => {
-    const corsOrigin = config.corsOrigin;
     const requestOrigin = request.headers.origin;
 
-    let allowOrigin = false;
-    let allowedOriginValue = "";
-
-    // Check if origin is allowed
-    if (typeof corsOrigin === "string") {
-      if (corsOrigin === "*") {
-        allowOrigin = true;
-        allowedOriginValue = "*";
-      } else if (requestOrigin === corsOrigin) {
-        allowOrigin = true;
-        allowedOriginValue = requestOrigin || corsOrigin;
-      }
-    } else if (Array.isArray(corsOrigin)) {
-      if (requestOrigin && corsOrigin.includes(requestOrigin)) {
-        allowOrigin = true;
-        allowedOriginValue = requestOrigin;
-      }
-    }
+    const allowOrigin = Boolean(requestOrigin && allowedOrigins.has(requestOrigin));
+    const allowedOriginValue = requestOrigin ?? "";
 
     // Set CORS headers only if origin is allowed
     if (allowOrigin) {
-      // When using credentials, cannot use wildcard
-      if (allowedOriginValue === "*") {
-        response.header("Access-Control-Allow-Origin", "*");
-      } else {
-        response.header("Access-Control-Allow-Origin", allowedOriginValue);
-      }
+      response.header("Access-Control-Allow-Origin", allowedOriginValue);
+      response.header("Vary", "Origin");
 
       response.header(
         "Access-Control-Allow-Methods",

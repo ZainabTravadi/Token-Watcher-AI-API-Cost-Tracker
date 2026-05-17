@@ -11,7 +11,8 @@ export async function startServer(): Promise<void> {
   const config = getConfig();
   const database = getDatabase();
   const simulatorState = startTelemetrySimulator();
-  const analytics = buildRealtimeAnalyticsSnapshot();
+    const firstWorkspace = database.prepare("SELECT id FROM workspaces ORDER BY created_at DESC LIMIT 1").get() as { id: string } | undefined;
+    const analytics = firstWorkspace ? buildRealtimeAnalyticsSnapshot(firstWorkspace.id) : null;
   const apiUrl = `http://localhost:${config.port}`;
   const demoProcess = startSdkDemo(apiUrl);
 
@@ -27,7 +28,11 @@ export async function startServer(): Promise<void> {
     process.stdout.write(`Telemetry status     seeded ${simulatorState.seededRows.toLocaleString()} rows · sdk demo ${demoProcess ? "running" : "not started"}\n`);
     process.stdout.write(`Ingest API           ${apiUrl}/api/ingest\n`);
     process.stdout.write(`Requests generated   ${getTelemetryCount()} rows\n`);
-    process.stdout.write(`Analytics summary    $${analytics.overview.spendToday.toFixed(2)} today · ${analytics.overview.requestsToday.toLocaleString()} requests · ${(analytics.overview.errorRate * 100).toFixed(2)}% errors\n`);
+    if (analytics) {
+      process.stdout.write(`Analytics summary    $${analytics.overview.spendToday.toFixed(2)} today · ${analytics.overview.requestsToday.toLocaleString()} requests · ${(analytics.overview.errorRate * 100).toFixed(2)}% errors\n`);
+    } else {
+      process.stdout.write("Analytics summary    awaiting workspace data\n");
+    }
     process.stdout.write(`${separator}\n\n`);
   });
 

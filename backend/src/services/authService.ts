@@ -92,7 +92,7 @@ export function createWorkspace(userId: string, name: string): Workspace | null 
     const settingsStmt = db.prepare(
       "INSERT INTO workspace_settings (id, workspace_id, alert_on_high_cost, alert_on_errors, alert_cost_threshold, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
-    settingsStmt.run(settingsId, workspaceId, true, true, 50, now, now);
+    settingsStmt.run(settingsId, workspaceId, 1, 1, 50, now, now);
 
     // Generate API key for the workspace
     generateWorkspaceApiKey(workspaceId);
@@ -108,6 +108,7 @@ export function createWorkspace(userId: string, name: string): Workspace | null 
 
     return { id: workspaceId, user_id: userId, name, monthly_budget: 100, webhook_url: null, created_at: now, updated_at: now };
   } catch (error) {
+    console.error(`[createWorkspace] Error creating workspace for user ${userId}:`, error);
     return null;
   }
 }

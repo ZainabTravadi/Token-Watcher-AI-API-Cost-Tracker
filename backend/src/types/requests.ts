@@ -1,5 +1,6 @@
 export interface RequestRecord {
   id: number;
+  workspace_id: string;
   timestamp: number;
   route: string;
   model: string;
@@ -23,4 +24,21 @@ export interface CreateRequestRecordInput {
   cost_usd?: number;
   latency_ms?: number;
   error?: string | null;
+}
+
+export interface RequestLogQuery {
+  page?: number;
+  limit?: number;
+  cursor?: string;
+  route?: string;
+  model?: string[];
+}
+
+export interface RequestLogResponse {
+  data: RequestRecord[];
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+  nextCursor: string | null;
 }
