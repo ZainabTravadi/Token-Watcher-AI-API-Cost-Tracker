@@ -1,7 +1,7 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { getConfig } from "../config/env";
 import { verifyJwt } from "../utils/auth";
-import { verifyApiKey } from "../services/authService";
+import { getUserLastLogoutAt, verifyApiKey } from "../services/authService";
 
 export interface AuthenticatedRequest extends Request {
   userId?: string;
@@ -31,6 +31,12 @@ export function authenticateUser(req: AuthenticatedRequest, res: Response, next:
 
     const decoded = verifyJwt(token, config.jwtSecret);
     if (!decoded) {
+      res.status(401).json({ error: "Invalid token" });
+      return;
+    }
+
+    const lastLogoutAt = getUserLastLogoutAt(decoded.userId);
+    if (decoded.iat * 1000 < lastLogoutAt) {
       res.status(401).json({ error: "Invalid token" });
       return;
     }

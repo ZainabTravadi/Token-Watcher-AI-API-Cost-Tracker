@@ -2,13 +2,13 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  authFetch,
   fetchHealth,
-  getJwtToken,
   type HealthResponse,
   type TelemetryStreamStatus,
   formatTelemetryCount,
   isRequestLogRefreshEnabled,
-  setStreamStatus as setGlobalStreamStatus
+  setStreamStatus as setGlobalStreamStatus,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -149,12 +149,7 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
       if (isCleanedUp) return;
 
       try {
-        const apiUrl = import.meta.env.VITE_TOKENWATCH_API_URL ?? "http://localhost:3001";
-        const token = getJwtToken();
-        const authResponse = await fetch(`${apiUrl}/api/auth/me`, {
-          credentials: "include",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined
-        });
+        const authResponse = await authFetch("/api/auth/me");
 
         if (isCleanedUp) {
           return;
@@ -172,9 +167,8 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
           throw new Error(`Auth check failed with status ${authResponse.status}`);
         }
 
-        const streamUrl = token
-          ? `${apiUrl}/api/telemetry/stream?workspaceId=${encodeURIComponent(workspaceId)}&token=${encodeURIComponent(token)}`
-          : `${apiUrl}/api/telemetry/stream?workspaceId=${encodeURIComponent(workspaceId)}`;
+        const apiUrl = import.meta.env.VITE_TOKENWATCH_API_URL ?? "http://localhost:3001";
+        const streamUrl = `${apiUrl}/api/telemetry/stream?workspaceId=${encodeURIComponent(workspaceId)}`;
 
         closeSource();
         source = new EventSource(streamUrl, { withCredentials: true });
@@ -211,13 +205,26 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
         source.addEventListener("seeded", handleUpdate);
         source.addEventListener("connected", handleUpdate);
 
-        source.onerror = () => {
+        source.onerror = async () => {
           if (!source || isCleanedUp) return;
 
           const readyState = source.readyState;
           closeSource();
 
           if (readyState === EventSource.CLOSED) {
+            try {
+              const checkResponse = await authFetch("/api/auth/me");
+              if (checkResponse.status === 401 || checkResponse.status === 403) {
+                if (!isCleanedUp) {
+                  setLastTelemetryEventAt(null);
+                  setStreamState("unauthorized");
+                }
+                return;
+              }
+            } catch (err) {
+              // If auth check fails due to network, allow reconnect behavior below.
+            }
+
             if (!isCleanedUp) {
               setStreamState("offline");
             }

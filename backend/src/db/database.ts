@@ -31,6 +31,8 @@ function applySchema(db: Database): void {
   db.exec(createApiKeysWorkspaceIdIndexSql);
   db.exec(createWorkspaceSettingsTableSql);
   
+  ensureSchemaUpdates(db);
+  
   // Requests table
   db.exec(createRequestsTableSql);
   db.exec(createRequestsTimestampIndexSql);
@@ -39,6 +41,13 @@ function applySchema(db: Database): void {
   db.exec(createRequestsWorkspaceRouteTimestampIndexSql);
   db.exec(createRequestsWorkspaceModelTimestampIndexSql);
   db.exec(createRequestsWorkspaceIndexSql);
+}
+
+function ensureSchemaUpdates(db: Database): void {
+  const usersInfo = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+  if (!usersInfo.some((column) => column.name === "last_logout_at")) {
+    db.exec("ALTER TABLE users ADD COLUMN last_logout_at INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 export function getDatabase(): Database {

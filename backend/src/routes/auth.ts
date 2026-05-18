@@ -1,15 +1,16 @@
 import { Router, type Request, type Response } from "express";
 import { getConfig } from "../config/env";
+import { getAuthClearCookieOptions, getAuthCookieName, getAuthCookieOptions } from "../config/cookies";
 import { createJwt, verifyPassword } from "../utils/auth";
 import {
   createUser,
   createWorkspace,
   findUserByEmail,
   findUserById,
-  generateWorkspaceApiKey,
   getWorkspaceApiKey,
   getWorkspaceSettings,
   getUserWorkspaces,
+  setUserLastLogoutAt,
 } from "../services/authService";
 import { authenticateUser, type AuthenticatedRequest } from "../middleware/auth";
 
@@ -42,40 +43,26 @@ export function createAuthRouter(): Router {
       }
 
       // Create default workspace for new user
-      const workspace = createWorkspace(user.id, "Default Workspace");
-      if (!workspace) {
+      const creation = createWorkspace(user.id, "Default Workspace");
+      if (!creation) {
         res.status(500).json({ error: "Failed to create workspace" });
         return;
       }
 
-      // Generate initial API key
-      const apiKeyString = generateWorkspaceApiKey(workspace.id);
+      const settings = getWorkspaceSettings(creation.workspace.id);
+      const apiKey = getWorkspaceApiKey(creation.workspace.id);
 
       // Create JWT token
       const config = getConfig();
       const token = createJwt(user.id, config.jwtSecret);
 
-      res.cookie("tokenwatch_auth", token, {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      });
-
-      res.cookie("tokenwatch_stream", token, {
-        httpOnly: false,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-      });
-
-      const settings = getWorkspaceSettings(workspace.id);
+      res.cookie(getAuthCookieName(), token, getAuthCookieOptions(config));
 
       res.status(201).json({
         user: { id: user.id, email: user.email, created_at: user.created_at },
         workspace: {
-          ...workspace,
-          apiKey: apiKeyString ? { key: apiKeyString } : null,
+          ...creation.workspace,
+          apiKey: apiKey ? { id: creation.apiKey, created_at: apiKey.created_at } : null,
           settings,
         },
       });
@@ -108,22 +95,22 @@ export function createAuthRouter(): Router {
       const config = getConfig();
       const token = createJwt(user.id, config.jwtSecret);
 
-      res.cookie("tokenwatch_auth", token, {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      });
+      res.cookie(getAuthCookieName(), token, getAuthCookieOptions(config));
 
-      res.cookie("tokenwatch_stream", token, {
-        httpOnly: false,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
+      const workspaces = getUserWorkspaces(user.id);
+      const workspacesWithKeys = workspaces.map((ws) => {
+        const apiKey = getWorkspaceApiKey(ws.id);
+        const settings = getWorkspaceSettings(ws.id);
+        return {
+          ...ws,
+          apiKey: apiKey ? { id: apiKey.id, created_at: apiKey.created_at } : null,
+          settings,
+        };
       });
 
       res.status(200).json({
         user: { id: user.id, email: user.email },
+        workspaces: workspacesWithKeys,
       });
     } catch (error) {
       console.error("[auth:login:error]", error);
@@ -135,9 +122,12 @@ export function createAuthRouter(): Router {
    * Logout
    * POST /api/auth/logout
    */
-  router.post("/logout", (req: Request, res: Response) => {
-    res.clearCookie("tokenwatch_auth");
-    res.clearCookie("tokenwatch_stream");
+  router.post("/logout", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+    const config = getConfig();
+    if (req.userId) {
+      setUserLastLogoutAt(req.userId, Date.now());
+    }
+    res.clearCookie(getAuthCookieName(), getAuthClearCookieOptions(config));
     res.status(200).json({ ok: true });
   });
 

@@ -33,6 +33,11 @@ export interface ApiKey {
   revoked_at: number | null;
 }
 
+export interface WorkspaceCreationResult {
+  workspace: Workspace;
+  apiKey: string;
+}
+
 /**
  * Create a new user account
  */
@@ -72,10 +77,28 @@ export function findUserById(id: string): User | null {
   return stmt.get(id) as User | null;
 }
 
+export function setUserLastLogoutAt(userId: string, timestamp: number): boolean {
+  try {
+    const db = getDatabase();
+    const stmt = db.prepare("UPDATE users SET last_logout_at = ? WHERE id = ?");
+    const result = stmt.run(timestamp, userId);
+    return result.changes > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
+export function getUserLastLogoutAt(userId: string): number {
+  const db = getDatabase();
+  const stmt = db.prepare("SELECT last_logout_at FROM users WHERE id = ?");
+  const row = stmt.get(userId) as { last_logout_at: number } | undefined;
+  return row?.last_logout_at ?? 0;
+}
+
 /**
  * Create a new workspace for a user
  */
-export function createWorkspace(userId: string, name: string): Workspace | null {
+export function createWorkspace(userId: string, name: string): WorkspaceCreationResult | null {
   try {
     const db = getDatabase();
     const workspaceId = generateId("ws");
@@ -95,7 +118,7 @@ export function createWorkspace(userId: string, name: string): Workspace | null 
     settingsStmt.run(settingsId, workspaceId, 1, 1, 50, now, now);
 
     // Generate API key for the workspace
-    generateWorkspaceApiKey(workspaceId);
+    const apiKey = generateWorkspaceApiKey(workspaceId);
 
     // Start simulator for this workspace (async to not block signup)
     try {
@@ -106,7 +129,10 @@ export function createWorkspace(userId: string, name: string): Workspace | null 
       console.warn(`[createWorkspace] Failed to start simulator:`, error);
     }
 
-    return { id: workspaceId, user_id: userId, name, monthly_budget: 100, webhook_url: null, created_at: now, updated_at: now };
+    return {
+      workspace: { id: workspaceId, user_id: userId, name, monthly_budget: 100, webhook_url: null, created_at: now, updated_at: now },
+      apiKey,
+    };
   } catch (error) {
     console.error(`[createWorkspace] Error creating workspace for user ${userId}:`, error);
     return null;
@@ -153,8 +179,14 @@ export function updateWorkspaceSettings(
     const now = Date.now();
 
     const keys = Object.keys(updates);
-    const values = Object.values(updates);
+    const values = Object.values(updates).map((value) =>
+      typeof value === "boolean" ? (value ? 1 : 0) : value
+    );
     const setClauses = keys.map((k) => `${k} = ?`).join(", ");
+
+    if (keys.length === 0) {
+      return getWorkspaceSettings(workspaceId);
+    }
 
     const stmt = db.prepare(`UPDATE workspace_settings SET ${setClauses}, updated_at = ? WHERE workspace_id = ?`);
     stmt.run(...values, now, workspaceId);
@@ -162,6 +194,7 @@ export function updateWorkspaceSettings(
     const selectStmt = db.prepare("SELECT * FROM workspace_settings WHERE workspace_id = ?");
     return selectStmt.get(workspaceId) as WorkspaceSettings | null;
   } catch (error) {
+    console.error("[updateWorkspaceSettings:error]", error);
     return null;
   }
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,84 +8,112 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, isLoading, error } = useAuth();
+  const location = useLocation();
+  const { login, isLoading, error, user, isAuthReady } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/app";
+
+  if (isAuthReady && user) {
+    return <Navigate to="/app" replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError(null);
 
     if (!email || !password) {
-      setLocalError("Email and password are required");
+      setLocalError("Email and password are required.");
       return;
     }
 
     try {
       await login(email, password);
-      navigate("/app");
+      navigate(from, { replace: true });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Login failed";
+      const message = err instanceof Error ? err.message : "Login failed.";
       setLocalError(message);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-      <div className="w-full max-w-md">
-        <div className="bg-white dark:bg-slate-950 rounded-lg shadow-lg p-8">
-          <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-600">
-              TokenWatch
-            </h1>
-            <p className="text-muted-foreground mt-2">Real-time token tracking and analytics</p>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-12 lg:py-16">
+        <header className="mb-10 flex flex-col gap-4 border-b border-hairline pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="font-serif text-3xl tracking-tight">TokenWatch</p>
+            <p className="mt-2 text-sm text-muted-foreground max-w-xl">A quiet, operational console for AI spend observability.</p>
           </div>
+          <Link to="/" className="text-sm text-muted-foreground transition hover:text-foreground">Back to home</Link>
+        </header>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {(error || localError) && (
-              <Alert variant="destructive">
-                <AlertDescription>{error || localError}</AlertDescription>
-              </Alert>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
-              />
+        <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
+          <section className="rounded-3xl border border-hairline bg-surface p-10 shadow-sm">
+            <div className="space-y-3">
+              <p className="label-mono text-xs uppercase tracking-[0.25em] text-muted-foreground">Authentication</p>
+              <h1 className="font-serif text-3xl">Sign in to your workspace</h1>
+              <p className="text-sm text-muted-foreground max-w-2xl">Restore your session, reconnect realtime streams, and continue tracking token usage across your workspace.</p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
-              />
+            <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+              {(error || localError) && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error || localError}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Signing in…" : "Sign in"}
+              </Button>
+            </form>
+
+            <div className="mt-6 border-t border-hairline pt-4 text-sm text-muted-foreground">
+              Don’t have an account? <Link to="/signup" className="text-foreground hover:underline">Create one</Link>.
             </div>
+          </section>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Signing in..." : "Sign In"}
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center text-sm">
-            <p className="text-muted-foreground">
-              Don't have an account?{" "}
-              <Link to="/signup" className="text-blue-600 hover:underline font-medium">
-                Sign up
-              </Link>
-            </p>
-          </div>
+          <aside className="space-y-6 rounded-3xl border border-hairline bg-surface p-8 text-sm text-muted-foreground">
+            <div>
+              <p className="label-mono text-xs uppercase tracking-[0.25em]">Operational by design</p>
+              <p className="mt-3">Sign in to access your workspace and resume realtime analytics without a glossy checkout flow.</p>
+            </div>
+            <div className="rounded-2xl border border-hairline bg-background p-4 text-xs font-mono leading-6">
+              <p>workspace-scoped auth</p>
+              <p>session persistence</p>
+              <p>realtime stream restore</p>
+              <p>quiet console aesthetic</p>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

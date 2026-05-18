@@ -1,7 +1,22 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-const API_BASE_URL = import.meta.env.VITE_TOKENWATCH_API_URL ?? "http://localhost:3001";
+function resolveApiBaseUrl(): string {
+  if (import.meta.env.VITE_TOKENWATCH_API_URL) {
+    return import.meta.env.VITE_TOKENWATCH_API_URL;
+  }
+
+  if (typeof window !== "undefined") {
+    const { hostname } = window.location;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return `http://${hostname}:3001`;
+    }
+  }
+
+  return "http://localhost:3001";
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 export { API_BASE_URL };
 
@@ -152,6 +167,28 @@ export type TelemetryStreamStatus = StreamStatusType;
 const streamListeners = new Set<() => void>();
 let streamStatus: TelemetryStreamStatus = "connecting";
 let requestLogRefreshEnabled = true;
+const authInvalidationListeners = new Set<() => void>();
+let hasInvalidated = false;
+
+export function subscribeAuthInvalidation(listener: () => void): () => void {
+  authInvalidationListeners.add(listener);
+  return () => authInvalidationListeners.delete(listener);
+}
+
+export function triggerAuthInvalidation(): void {
+  if (hasInvalidated) {
+    return;
+  }
+
+  hasInvalidated = true;
+  for (const listener of authInvalidationListeners) {
+    listener();
+  }
+}
+
+export function resetAuthInvalidation(): void {
+  hasInvalidated = false;
+}
 
 export function setRequestLogRefreshEnabled(enabled: boolean): void {
   requestLogRefreshEnabled = enabled;
@@ -182,16 +219,30 @@ function subscribeStreamStatus(listener: () => void): () => void {
   };
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function authFetch(path: string, init?: RequestInit): Promise<Response> {
   const hasBody = init?.body !== undefined && init?.body !== null;
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers ?? {})
     },
-    credentials: "include",
-    ...init
+    credentials: "include"
   });
+
+  const shouldInvalidate =
+    !path.startsWith("/api/auth/login") &&
+    !path.startsWith("/api/auth/signup");
+
+  if (shouldInvalidate && (response.status === 401 || response.status === 403)) {
+    triggerAuthInvalidation();
+  }
+
+  return response;
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await authFetch(path, init);
 
   if (!response.ok) {
     const body = await response.text();
@@ -203,25 +254,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function fetchHealth(): Promise<HealthResponse> {
   return apiFetch<HealthResponse>("/api/health");
-}
-
-/**
- * Extract JWT token from cookies
- * EventSource doesn't support custom headers, so we need to pass the token as a query parameter
- */
-export function getJwtToken(): string | null {
-  const preferredNames = ["tokenwatch_stream", "tokenwatch_auth"];
-  const cookies = document.cookie.split(";");
-  for (const name of preferredNames) {
-    const nameEQ = name + "=";
-    for (let cookie of cookies) {
-      cookie = cookie.trim();
-      if (cookie.startsWith(nameEQ)) {
-        return cookie.substring(nameEQ.length);
-      }
-    }
-  }
-  return null;
 }
 
 export async function fetchSimulatorStatus(): Promise<SimulatorStatusResponse> {
@@ -236,7 +268,7 @@ export async function fetchAnalyticsSnapshot(workspaceId?: string): Promise<Anal
 }
 
 export async function fetchTelemetryRows(workspaceId?: string, limit = 500): Promise<TelemetryRow[]> {
-  const url = workspaceId 
+  const url = workspaceId
     ? `/api/telemetry?workspaceId=${workspaceId}&limit=${limit}`
     : `/api/telemetry?limit=${limit}`;
   const response = await apiFetch<{ data: TelemetryRow[] }>(url);
