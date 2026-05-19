@@ -162,6 +162,20 @@ export interface RequestLogResponse {
   nextCursor: string | null;
 }
 
+export interface WorkspaceSettingsResponse {
+  id: string;
+  workspace_id: string;
+  alert_on_high_cost: boolean;
+  alert_on_errors: boolean;
+  alert_cost_threshold: number;
+  updated_at: number;
+}
+
+export type EndpointRow = AnalyticsEndpointRow;
+export type ModelRow = AnalyticsModelRow;
+export type RequestRow = TelemetryRow;
+export type TelemetryEvent = TelemetryRow;
+
 export type TelemetryStreamStatus = StreamStatusType;
 
 const streamListeners = new Set<() => void>();
@@ -294,7 +308,7 @@ export async function fetchRequestLog(workspaceId?: string, query: RequestLogQue
 }
 
 export function useHealthQuery() {
-  return useQuery({
+  return useQuery<HealthResponse>({
     queryKey: ["health"],
     queryFn: fetchHealth,
     refetchInterval: 10_000,
@@ -304,7 +318,7 @@ export function useHealthQuery() {
 }
 
 export function useSimulatorStatusQuery() {
-  return useQuery({
+  return useQuery<SimulatorStatusResponse>({
     queryKey: ["simulator-status"],
     queryFn: fetchSimulatorStatus,
     refetchInterval: 10_000,
@@ -315,7 +329,7 @@ export function useSimulatorStatusQuery() {
 
 export function useAnalyticsSnapshotQuery(workspaceId?: string) {
   const streamStatus = useTelemetryStreamStatus();
-  return useQuery({
+  return useQuery<AnalyticsSnapshot>({
     queryKey: ["analytics-snapshot", workspaceId],
     queryFn: () => fetchAnalyticsSnapshot(workspaceId),
     refetchInterval: streamStatus === "offline" || streamStatus === "unauthorized" ? 5_000 : false,
@@ -327,7 +341,7 @@ export function useAnalyticsSnapshotQuery(workspaceId?: string) {
 
 export function useTelemetryRowsQuery(workspaceId?: string, limit = 500) {
   const streamStatus = useTelemetryStreamStatus();
-  return useQuery({
+  return useQuery<TelemetryRow[]>({
     queryKey: ["telemetry-rows", workspaceId, limit],
     queryFn: () => fetchTelemetryRows(workspaceId, limit),
     refetchInterval: streamStatus === "offline" || streamStatus === "unauthorized" ? 4_000 : false,
@@ -379,7 +393,7 @@ export function useRequestLogQuery(workspaceId?: string, query: RequestLogQuery 
   const streamStatus = useTelemetryStreamStatus();
   const modelsKey = (query.model ?? []).slice().sort().join(",");
 
-  return useQuery({
+  return useQuery<RequestLogResponse>({
     queryKey: ["request-log", workspaceId, query.page ?? 1, query.limit ?? 50, query.route ?? "all", modelsKey, query.cursor ?? ""],
     queryFn: () => fetchRequestLog(workspaceId, query),
     refetchInterval: streamStatus === "offline" || streamStatus === "unauthorized" ? 5_000 : false,

@@ -274,14 +274,22 @@ export function verifyApiKey(plainKey: string): { workspaceId: string; workspace
 export function regenerateWorkspaceApiKey(workspaceId: string): string | null {
   try {
     const db = getDatabase();
-    const now = Date.now();
+    const rotate = db.transaction(() => {
+      const apiKeyId = generateId("key");
+      const plainKey = generateApiKey();
+      const keyHash = hashApiKey(plainKey);
+      const now = Date.now();
 
-    // Revoke old keys
-    const revokeStmt = db.prepare("UPDATE api_keys SET revoked_at = ? WHERE workspace_id = ? AND revoked_at IS NULL");
-    revokeStmt.run(now, workspaceId);
+      const revokeStmt = db.prepare("UPDATE api_keys SET revoked_at = ? WHERE workspace_id = ? AND revoked_at IS NULL");
+      revokeStmt.run(now, workspaceId);
 
-    // Create new key
-    return generateWorkspaceApiKey(workspaceId);
+      const insertStmt = db.prepare("INSERT INTO api_keys (id, workspace_id, key_hash, created_at) VALUES (?, ?, ?, ?)");
+      insertStmt.run(apiKeyId, workspaceId, keyHash, now);
+
+      return plainKey;
+    });
+
+    return rotate() as string;
   } catch (error) {
     return null;
   }
@@ -302,6 +310,10 @@ export function updateWorkspace(
     const keys = Object.keys(updates);
     const values = Object.values(updates);
     const setClauses = keys.map((k) => `${k} = ?`).join(", ");
+
+    if (keys.length === 0) {
+      return getWorkspace(workspaceId, userId);
+    }
 
     const stmt = db.prepare(
       `UPDATE workspaces SET ${setClauses}, updated_at = ? WHERE id = ? AND user_id = ?`

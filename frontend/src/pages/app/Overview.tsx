@@ -23,7 +23,7 @@ export default function Overview() {
   }, []);
 
   // Show warmup state
-  const isWarmingUp = simulatorStatus?.status === "warming up" || simulatorStatus?.status === "starting";
+  const isWarmingUp = simulatorStatus === "warming up" || simulatorStatus === "starting";
   const hasData = analytics.data && analytics.data.overview.requestsToday > 0;
   const lastUpdatedAt = Math.max(analytics.dataUpdatedAt ?? 0, lastTelemetryEventAt ?? 0);
   const relativeTime = fmtRelativeTime(lastUpdatedAt || Date.now());

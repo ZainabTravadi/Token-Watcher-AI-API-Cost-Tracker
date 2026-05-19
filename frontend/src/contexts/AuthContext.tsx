@@ -33,11 +33,38 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  setCurrentWorkspace: (workspace: WorkspaceInfo) => void;
+  setCurrentWorkspace: (workspace: WorkspaceInfo | null) => void;
   refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const getPersistedWorkspaceId = (): string | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
+};
+
+const persistWorkspaceId = (workspaceId: string | null) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (workspaceId) {
+    window.localStorage.setItem(WORKSPACE_STORAGE_KEY, workspaceId);
+  } else {
+    window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+  }
+};
+
+const chooseWorkspace = (availableWorkspaces: WorkspaceInfo[] | null, preferredId: string | null): WorkspaceInfo | null => {
+  if (!availableWorkspaces || availableWorkspaces.length === 0) {
+    return null;
+  }
+
+  const matched = preferredId ? availableWorkspaces.find((ws) => ws.id === preferredId) : null;
+  return matched ?? availableWorkspaces[0];
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -74,33 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return text || `Request failed with status ${response.status}`;
   };
 
-  const getPersistedWorkspaceId = (): string | null => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-    return window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
-  };
-
-  const persistWorkspaceId = (workspaceId: string | null) => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (workspaceId) {
-      window.localStorage.setItem(WORKSPACE_STORAGE_KEY, workspaceId);
-    } else {
-      window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
-    }
-  };
-
-  const chooseWorkspace = (availableWorkspaces: WorkspaceInfo[] | null, preferredId: string | null): WorkspaceInfo | null => {
-    if (!availableWorkspaces || availableWorkspaces.length === 0) {
-      return null;
-    }
-
-    const matched = preferredId ? availableWorkspaces.find((ws) => ws.id === preferredId) : null;
-    return matched ?? availableWorkspaces[0];
-  };
-
   const clearSession = useCallback(() => {
     queryClient.clear();
     setUser(null);
@@ -111,16 +111,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     resetAuthInvalidation();
   }, [queryClient]);
 
-  const setCurrentWorkspace = (workspace: WorkspaceInfo | null) => {
+  const setCurrentWorkspace = useCallback((workspace: WorkspaceInfo | null) => {
     setCurrentWorkspaceState(workspace);
     persistWorkspaceId(workspace?.id ?? null);
-  };
+  }, []);
 
-  const restoreWorkspace = (availableWorkspaces: WorkspaceInfo[] | null) => {
+  const restoreWorkspace = useCallback((availableWorkspaces: WorkspaceInfo[] | null) => {
     const persisted = getPersistedWorkspaceId();
     const workspace = chooseWorkspace(availableWorkspaces, persisted);
     setCurrentWorkspace(workspace);
-  };
+  }, [setCurrentWorkspace]);
 
   // Check if user is already logged in on mount
   useEffect(() => {
@@ -146,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     checkAuth();
-  }, [clearSession]);
+  }, [clearSession, restoreWorkspace]);
 
   const login = async (email: string, password: string) => {
     try {

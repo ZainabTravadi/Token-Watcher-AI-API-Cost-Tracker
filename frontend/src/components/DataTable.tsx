@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { fmtUSD, fmtNum } from "@/lib/data";
 
-type Col<T> = {
+type Col<T extends object> = {
   key: keyof T;
   label: string;
   align?: "left" | "right";
@@ -9,7 +9,7 @@ type Col<T> = {
   width?: string;
 };
 
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T extends object>({
   columns,
   rows,
   onRowClick,

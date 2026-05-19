@@ -51,7 +51,7 @@ export default function Requests() {
   });
 
   const rows = useMemo(() => requestLog.data?.data ?? [], [requestLog.data?.data]);
-  const isWarmup = simulatorStatus?.status === "warming up" || simulatorStatus?.status === "starting";
+  const isWarmup = simulatorStatus === "warming up" || simulatorStatus === "starting";
   const isInitialLoading = analytics.isLoading || (requestLog.isLoading && rows.length === 0);
 
   useEffect(() => {

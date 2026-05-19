@@ -1,179 +1,284 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import AppLayout from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Eye, EyeOff, RotateCw, Trash2 } from "lucide-react";
+import { SettingsApiKeySection } from "./settings/SettingsApiKeySection";
+import { SettingsAlertsSection } from "./settings/SettingsAlertsSection";
+import { SettingsBudgetSection } from "./settings/SettingsBudgetSection";
+import { SettingsDangerZoneSection } from "./settings/SettingsDangerZoneSection";
+import { SettingsWebhookSection } from "./settings/SettingsWebhookSection";
+import { SettingsWorkspaceNameSection } from "./settings/SettingsWorkspaceNameSection";
+import { DangerousActionDialog } from "./settings/DangerousActionDialog";
+import {
+  deleteWorkspaceById,
+  rotateWorkspaceApiKey,
+  updateWorkspaceMeta,
+  updateWorkspaceSettings,
+} from "./settings/api";
+import {
+  validateAlertThreshold,
+  validateMonthlyBudget,
+  validateWebhookUrl,
+  validateWorkspaceName,
+} from "./settings/validation";
 
-const API_BASE_URL = import.meta.env.VITE_TOKENWATCH_API_URL ?? "http://localhost:3001";
+type AlertSettingKey = "alert_on_high_cost" | "alert_on_errors";
+
+function settingBool(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : value === 0 || value === 1 ? Boolean(value) : fallback;
+}
+
+function settingNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { currentWorkspace, refreshUser } = useAuth();
+  const queryClient = useQueryClient();
+  const { currentWorkspace, refreshUser, setCurrentWorkspace } = useAuth();
   const { toast } = useToast();
+  const previousWorkspaceId = useRef<string | null>(null);
 
+  const [plainApiKey, setPlainApiKey] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [apiKey, setApiKey] = useState<string | null>(null);
-  const [name, setName] = useState(currentWorkspace?.name || "");
-  const [budget, setBudget] = useState(currentWorkspace?.monthly_budget || 100);
-  const [webhookUrl, setWebhookUrl] = useState(currentWorkspace?.webhook_url || "");
-  const [alertHighCost, setAlertHighCost] = useState(currentWorkspace?.settings?.alert_on_high_cost ?? true);
-  const [alertErrors, setAlertErrors] = useState(currentWorkspace?.settings?.alert_on_errors ?? true);
-  const [costThreshold, setCostThreshold] = useState(currentWorkspace?.settings?.alert_cost_threshold ?? 50);
+  const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
-  const [loading, setLoading] = useState(false);
+  const [name, setName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [budget, setBudget] = useState("100");
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookError, setWebhookError] = useState<string | null>(null);
+  const [alertHighCost, setAlertHighCost] = useState(true);
+  const [alertErrors, setAlertErrors] = useState(true);
+  const [thresholdDraft, setThresholdDraft] = useState("50");
+  const [thresholdError, setThresholdError] = useState<string | null>(null);
+
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [savingAlerts, setSavingAlerts] = useState(false);
+  const [rotatingKey, setRotatingKey] = useState(false);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load API key when component mounts or workspace changes
   useEffect(() => {
-    if (currentWorkspace?.apiKey?.id) {
-      // Key is already loaded from workspace data but hashed
-      setApiKey(currentWorkspace.apiKey.id);
+    if (!currentWorkspace) return;
+
+    const workspaceChanged = previousWorkspaceId.current !== currentWorkspace.id;
+    previousWorkspaceId.current = currentWorkspace.id;
+
+    setName(currentWorkspace.name);
+    setBudget(String(currentWorkspace.monthly_budget));
+    setWebhookUrl(currentWorkspace.webhook_url ?? "");
+    setAlertHighCost(settingBool(currentWorkspace.settings?.alert_on_high_cost, true));
+    setAlertErrors(settingBool(currentWorkspace.settings?.alert_on_errors, true));
+    setThresholdDraft(String(settingNumber(currentWorkspace.settings?.alert_cost_threshold, 50)));
+    setNameError(null);
+    setBudgetError(null);
+    setWebhookError(null);
+    setThresholdError(null);
+    setError(null);
+
+    if (workspaceChanged) {
+      setPlainApiKey(null);
+      setShowApiKey(false);
+      setDeleteConfirmation("");
+      setRotateDialogOpen(false);
+      setDeleteDialogOpen(false);
     }
   }, [currentWorkspace]);
 
-  const copyApiKey = async () => {
-    if (apiKey) {
-      await navigator.clipboard.writeText(apiKey);
-      toast({
-        title: "Copied",
-        description: "API key copied to clipboard",
-      });
+  const syncWorkspaceState = async () => {
+    await refreshUser();
+    await queryClient.invalidateQueries({ queryKey: ["analytics-snapshot"] });
+    await queryClient.invalidateQueries({ queryKey: ["telemetry-rows"] });
+    await queryClient.invalidateQueries({ queryKey: ["request-log"] });
+    await queryClient.invalidateQueries({ queryKey: ["health"] });
+  };
+
+  const handleCopyApiKey = async () => {
+    if (!plainApiKey) return;
+
+    try {
+      await navigator.clipboard.writeText(plainApiKey);
+      toast({ title: "Copied", description: "New API key copied to clipboard" });
+    } catch {
+      toast({ title: "Error", description: "Failed to copy API key", variant: "destructive" });
     }
   };
 
-  const regenerateApiKey = async () => {
-    if (!currentWorkspace) return;
-    
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(`${API_BASE_URL}/api/workspaces/${currentWorkspace.id}/api-keys/regenerate`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to regenerate API key");
-      }
-
-      const data = await response.json();
-      setApiKey(data.apiKey);
-      toast({
-        title: "Success",
-        description: "API key regenerated",
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to regenerate API key";
-      setError(message);
-      toast({
-        title: "Error",
-        description: message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveSettings = async () => {
+  const handleRotateApiKey = async () => {
     if (!currentWorkspace) return;
 
     try {
-      setLoading(true);
+      setRotatingKey(true);
       setError(null);
-
-      const response = await fetch(`${API_BASE_URL}/api/workspaces/${currentWorkspace.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name,
-          monthly_budget: parseFloat(String(budget)),
-          webhook_url: webhookUrl || null,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to update workspace");
-      }
-
-      // Update settings
-      const settingsResponse = await fetch(
-        `${API_BASE_URL}/api/workspaces/${currentWorkspace.id}/settings`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            alert_on_high_cost: alertHighCost,
-            alert_on_errors: alertErrors,
-            alert_cost_threshold: parseFloat(String(costThreshold)),
-          }),
-        }
-      );
-
-      if (!settingsResponse.ok) {
-        throw new Error("Failed to update settings");
-      }
-
+      const data = await rotateWorkspaceApiKey(currentWorkspace.id);
+      setPlainApiKey(data.apiKey);
+      setShowApiKey(false);
+      setRotateDialogOpen(false);
       await refreshUser();
-      toast({
-        title: "Success",
-        description: "Settings saved",
-      });
+      toast({ title: "API key rotated", description: "Existing integrations must use the new key." });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to save settings";
+      const message = err instanceof Error ? err.message : "Failed to rotate API key";
       setError(message);
-      toast({
-        title: "Error",
-        description: message,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
-      setLoading(false);
+      setRotatingKey(false);
     }
   };
 
-  const deleteWorkspace = async () => {
+  const handleAlertUpdate = async (settingKey: AlertSettingKey, nextValue: boolean) => {
     if (!currentWorkspace) return;
 
-    if (!window.confirm("Are you sure? This will permanently delete the workspace and all its data.")) {
+    const previousHighCost = alertHighCost;
+    const previousErrors = alertErrors;
+    if (settingKey === "alert_on_high_cost") {
+      setAlertHighCost(nextValue);
+    } else {
+      setAlertErrors(nextValue);
+    }
+
+    try {
+      setSavingAlerts(true);
+      await updateWorkspaceSettings(currentWorkspace.id, { [settingKey]: nextValue });
+      await syncWorkspaceState();
+    } catch (err) {
+      setAlertHighCost(previousHighCost);
+      setAlertErrors(previousErrors);
+      const message = err instanceof Error ? err.message : "Failed to update alert";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setSavingAlerts(false);
+    }
+  };
+
+  const handleThresholdInputChange = (value: string) => {
+    setThresholdDraft(value);
+    setThresholdError(null);
+  };
+
+  const handleThresholdSliderChange = (value: number) => {
+    setThresholdDraft(String(Math.min(100, Math.max(1, Math.round(value)))));
+    setThresholdError(null);
+  };
+
+  const handleSaveThreshold = async () => {
+    if (!currentWorkspace) return;
+
+    const validation = validateAlertThreshold(thresholdDraft);
+    if (!validation.valid) {
+      setThresholdError(validation.error || "Invalid threshold");
+      return;
+    }
+
+    const previousThreshold = String(settingNumber(currentWorkspace.settings?.alert_cost_threshold, 50));
+    try {
+      setSavingAlerts(true);
+      setThresholdError(null);
+      await updateWorkspaceSettings(currentWorkspace.id, { alert_cost_threshold: Number(thresholdDraft) });
+      await syncWorkspaceState();
+      toast({ title: "Threshold saved", description: "Alert threshold updated" });
+    } catch (err) {
+      setThresholdDraft(previousThreshold);
+      const message = err instanceof Error ? err.message : "Failed to update threshold";
+      setThresholdError(message);
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setSavingAlerts(false);
+    }
+  };
+
+  const handleSaveWebhook = async () => {
+    if (!currentWorkspace) return;
+
+    const validation = validateWebhookUrl(webhookUrl);
+    if (!validation.valid) {
+      setWebhookError(validation.error || "Invalid webhook URL");
       return;
     }
 
     try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/workspaces/${currentWorkspace.id}`, {
-        method: "DELETE",
-        credentials: "include",
+      setSavingMeta(true);
+      setWebhookError(null);
+      const trimmed = webhookUrl.trim();
+      await updateWorkspaceMeta(currentWorkspace.id, { webhook_url: trimmed || null });
+      setWebhookUrl(trimmed);
+      await syncWorkspaceState();
+      toast({ title: "Webhook saved", description: trimmed ? "Webhook URL updated" : "Webhook URL cleared" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update webhook URL";
+      setWebhookError(message);
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setSavingMeta(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!currentWorkspace) return;
+
+    const nameValidation = validateWorkspaceName(name);
+    const budgetValidation = validateMonthlyBudget(budget);
+    const webhookValidation = validateWebhookUrl(webhookUrl);
+
+    setNameError(nameValidation.valid ? null : nameValidation.error || "Invalid name");
+    setBudgetError(budgetValidation.valid ? null : budgetValidation.error || "Invalid budget");
+    setWebhookError(webhookValidation.valid ? null : webhookValidation.error || "Invalid webhook URL");
+
+    if (!nameValidation.valid || !budgetValidation.valid || !webhookValidation.valid) {
+      return;
+    }
+
+    try {
+      setSavingMeta(true);
+      setError(null);
+      const trimmedWebhook = webhookUrl.trim();
+      await updateWorkspaceMeta(currentWorkspace.id, {
+        name: name.trim(),
+        monthly_budget: Number(budget),
+        webhook_url: trimmedWebhook || null,
       });
+      setName(name.trim());
+      setWebhookUrl(trimmedWebhook);
+      await syncWorkspaceState();
+      toast({ title: "Settings saved", description: "Workspace settings updated" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to save settings";
+      setError(message);
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setSavingMeta(false);
+    }
+  };
 
-      if (!response.ok) {
-        throw new Error("Failed to delete workspace");
-      }
+  const handleDeleteWorkspace = async () => {
+    if (!currentWorkspace) return;
 
-      toast({
-        title: "Success",
-        description: "Workspace deleted",
-      });
-
+    try {
+      setDeletingWorkspace(true);
+      setError(null);
+      await deleteWorkspaceById(currentWorkspace.id);
+      setDeleteDialogOpen(false);
+      setDeleteConfirmation("");
+      setPlainApiKey(null);
+      setCurrentWorkspace(null);
+      queryClient.clear();
       await refreshUser();
-      navigate("/app");
+      navigate("/app", { replace: true });
+      toast({ title: "Workspace deleted", description: "Workspace state and telemetry cache were cleared." });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to delete workspace";
       setError(message);
-      toast({
-        title: "Error",
-        description: message,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
-      setLoading(false);
+      setDeletingWorkspace(false);
     }
   };
 
@@ -187,151 +292,86 @@ export default function Settings() {
     );
   }
 
+  const sliderValue = (() => {
+    const parsed = Number(thresholdDraft);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100
+      ? parsed
+      : settingNumber(currentWorkspace.settings?.alert_cost_threshold, 50);
+  })();
+  const deleteEnabled =
+    deleteConfirmation === "DELETE" || deleteConfirmation.trim() === currentWorkspace.name;
+
   return (
-    <AppLayout title="Settings" meta={`workspace · ${currentWorkspace.name}`}>
-      <form onSubmit={(e) => { e.preventDefault(); saveSettings(); }} className="max-w-2xl space-y-8">
+    <AppLayout title="Settings" meta={`workspace | ${currentWorkspace.name}`}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSaveSettings();
+        }}
+        className="max-w-2xl space-y-8"
+      >
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        {/* API Key Section */}
-        <Section
-          n="01"
-          title="API key"
-          desc="Used by the TokenWatch SDK to identify this workspace. Rotate any time — old keys are revoked immediately."
-        >
-          <div className="space-y-4">
-            {apiKey && (
-              <div className="flex gap-2">
-                <Input
-                  type={showApiKey ? "text" : "password"}
-                  value={apiKey}
-                  readOnly
-                  className="flex-1 font-mono text-sm"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                >
-                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={copyApiKey}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={regenerateApiKey}
-              disabled={loading}
-              className="w-full"
-            >
-              <RotateCw className="h-4 w-4 mr-2" />
-              Regenerate Key
-            </Button>
-          </div>
-        </Section>
+        <SettingsApiKeySection
+          workspace={currentWorkspace}
+          plainApiKey={plainApiKey}
+          showApiKey={showApiKey}
+          isRotating={rotatingKey}
+          onToggleReveal={() => setShowApiKey((visible) => !visible)}
+          onCopy={() => void handleCopyApiKey()}
+          onRequestRotate={() => setRotateDialogOpen(true)}
+        />
 
-        {/* Workspace Name */}
-        <Section
-          n="02"
-          title="Workspace name"
-          desc="The display name for this workspace."
-        >
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="My Workspace"
-          />
-        </Section>
+        <SettingsWorkspaceNameSection
+          value={name}
+          error={nameError}
+          onChange={(value) => {
+            setName(value);
+            setNameError(null);
+          }}
+        />
 
-        {/* Monthly Budget */}
-        <Section
-          n="03"
-          title="Monthly budget"
-          desc="A soft limit. Requests are never blocked — TokenWatch will only notify."
-        >
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-sm">USD</span>
-            <Input
-              type="number"
-              value={budget}
-              onChange={(e) => setBudget(parseFloat(e.target.value) || 0)}
-              step="10"
-              min="0"
-              className="w-40"
-            />
-            <span className="text-xs text-muted-foreground font-mono">/ month</span>
-          </div>
-        </Section>
+        <SettingsBudgetSection
+          value={budget}
+          error={budgetError}
+          onChange={(value) => {
+            setBudget(value);
+            setBudgetError(null);
+          }}
+        />
 
-        {/* Alerts */}
-        <Section
-          n="04"
-          title="Alerts"
-          desc="Notifications for high costs and errors."
-        >
-          <div className="space-y-4">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={alertHighCost}
-                onChange={(e) => setAlertHighCost(e.target.checked)}
-              />
-              <span className="text-sm">Alert on high cost</span>
-            </label>
-            {alertHighCost && (
-              <div className="flex items-center gap-3 ml-7">
-                <span className="text-xs text-muted-foreground">Threshold:</span>
-                <Input
-                  type="number"
-                  value={costThreshold}
-                  onChange={(e) => setCostThreshold(parseFloat(e.target.value) || 50)}
-                  step="10"
-                  min="0"
-                  className="w-24"
-                />
-                <span className="text-xs text-muted-foreground">% of budget</span>
-              </div>
-            )}
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={alertErrors}
-                onChange={(e) => setAlertErrors(e.target.checked)}
-              />
-              <span className="text-sm">Alert on errors</span>
-            </label>
-          </div>
-        </Section>
+        <SettingsAlertsSection
+          alertHighCost={alertHighCost}
+          alertErrors={alertErrors}
+          thresholdDraft={thresholdDraft}
+          sliderValue={sliderValue}
+          error={thresholdError}
+          isSaving={savingAlerts}
+          onToggleHighCost={(enabled) => void handleAlertUpdate("alert_on_high_cost", enabled)}
+          onToggleErrors={(enabled) => void handleAlertUpdate("alert_on_errors", enabled)}
+          onThresholdInputChange={handleThresholdInputChange}
+          onThresholdSliderChange={handleThresholdSliderChange}
+          onSaveThreshold={() => void handleSaveThreshold()}
+        />
 
-        {/* Webhook URL */}
-        <Section
-          n="05"
-          title="Webhook URL"
-          desc="POST notifications to this endpoint. Payload is JSON, signed with HMAC-SHA256."
-        >
-          <Input
-            type="url"
-            value={webhookUrl}
-            onChange={(e) => setWebhookUrl(e.target.value)}
-            placeholder="https://hooks.example.com/tokenwatch"
-          />
-        </Section>
+        <SettingsWebhookSection
+          value={webhookUrl}
+          error={webhookError}
+          isSaving={savingMeta}
+          onChange={(value) => {
+            setWebhookUrl(value);
+            setWebhookError(null);
+          }}
+          onSave={() => void handleSaveWebhook()}
+        />
 
         <div className="border-t pt-6 flex items-center gap-4">
-          <Button type="submit" disabled={loading}>
-            {loading ? "Saving..." : "Save changes"}
+          <Button type="submit" disabled={savingMeta}>
+            {savingMeta ? "Saving..." : "Save changes"}
           </Button>
           <Button type="button" variant="outline" onClick={() => window.history.back()}>
             Cancel
@@ -339,39 +379,54 @@ export default function Settings() {
         </div>
       </form>
 
-      {/* Danger Zone */}
-      <div className="mt-20 max-w-2xl">
-        <div className="label-mono mb-3">Danger zone</div>
-        <div className="border border-red-500/40 p-5 flex items-center justify-between bg-red-500/5">
-          <div>
-            <div className="font-serif text-base">Delete workspace</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Removes all logs, endpoints, and stored credentials. This is permanent.
-            </div>
-          </div>
-          <Button
-            variant="destructive"
-            onClick={deleteWorkspace}
-            disabled={loading}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete workspace
-          </Button>
-        </div>
-      </div>
-    </AppLayout>
-  );
-}
+      <SettingsDangerZoneSection
+        isDeleting={deletingWorkspace}
+        onRequestDelete={() => {
+          setDeleteConfirmation("");
+          setDeleteDialogOpen(true);
+        }}
+      />
 
-function Section({ n, title, desc, children }: { n: string; title: string; desc: string; children: React.ReactNode }) {
-  return (
-    <section className="grid grid-cols-12 gap-6 py-8 border-b">
-      <div className="col-span-4">
-        <div className="label-mono mb-1">§ {n}</div>
-        <h3 className="font-serif text-lg">{title}</h3>
-        <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{desc}</p>
-      </div>
-      <div className="col-span-8">{children}</div>
-    </section>
+      <DangerousActionDialog
+        open={rotateDialogOpen}
+        onOpenChange={setRotateDialogOpen}
+        title="Rotate workspace API key"
+        description="The current API key will be revoked immediately. Any SDK or ingestion process using it will fail until the new key is installed."
+        confirmLabel="Rotate key"
+        pendingLabel="Rotating..."
+        isPending={rotatingKey}
+        onConfirm={() => void handleRotateApiKey()}
+      >
+        <div className="border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+          The new secret will be shown once. Copy it before leaving this screen.
+        </div>
+      </DangerousActionDialog>
+
+      <DangerousActionDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete workspace"
+        description="This permanently deletes the workspace, telemetry rows, settings, and active credentials. The action cannot be undone."
+        confirmLabel="Delete workspace"
+        pendingLabel="Deleting..."
+        isPending={deletingWorkspace}
+        disabled={!deleteEnabled}
+        onConfirm={() => void handleDeleteWorkspace()}
+      >
+        <div className="space-y-3">
+          <div className="border border-red-500/30 bg-red-500/5 p-3 text-xs text-muted-foreground">
+            Type <span className="font-mono text-foreground">{currentWorkspace.name}</span> or{" "}
+            <span className="font-mono text-foreground">DELETE</span> to confirm.
+          </div>
+          <Input
+            value={deleteConfirmation}
+            onChange={(event) => setDeleteConfirmation(event.target.value)}
+            disabled={deletingWorkspace}
+            autoComplete="off"
+            className="font-mono"
+          />
+        </div>
+      </DangerousActionDialog>
+    </AppLayout>
   );
 }

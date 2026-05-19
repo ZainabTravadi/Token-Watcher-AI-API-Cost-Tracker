@@ -187,7 +187,7 @@ export default function Models() {
     };
   }, [modelRows, selectedRow]);
 
-  const isWarmup = simulatorStatus?.status === "warming up" || simulatorStatus?.status === "starting";
+  const isWarmup = simulatorStatus === "warming up" || simulatorStatus === "starting";
 
   if (analytics.isLoading || telemetry.isLoading) {
     return (

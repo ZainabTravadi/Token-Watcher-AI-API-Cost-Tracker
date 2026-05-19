@@ -62,7 +62,7 @@ export function createAuthRouter(): Router {
         user: { id: user.id, email: user.email, created_at: user.created_at },
         workspace: {
           ...creation.workspace,
-          apiKey: apiKey ? { id: creation.apiKey, created_at: apiKey.created_at } : null,
+          apiKey: apiKey ? { id: apiKey.id, created_at: apiKey.created_at } : null,
           settings,
         },
       });
