@@ -40,7 +40,7 @@ export function startWorkspaceSimulator(workspaceId: string): boolean {
     // Generate initial batch of records (seeding)
     const initialBatch = generateTelemetryBatch(workspaceId, 3, true);
     ingestTelemetry(workspaceId, initialBatch);
-    telemetryBus.emitSeeded(initialBatch.length);
+    telemetryBus.emitSeeded(workspaceId, initialBatch.length);
 
     // Start interval to generate more records every 2-5 seconds
     const interval = setInterval(() => {
@@ -48,11 +48,16 @@ export function startWorkspaceSimulator(workspaceId: string): boolean {
         const batch = generateTelemetryBatch(workspaceId, 1, false);
         if (batch.length > 0) {
           ingestTelemetry(workspaceId, batch);
+          const simulator = activeSimulators.get(workspaceId);
+          if (simulator) {
+            simulator.recordsGenerated += batch.length;
+          }
         }
       } catch (error) {
         console.error(`[workspace-simulator:${workspaceId}]`, error);
       }
     }, Math.random() * 3000 + 2000); // 2-5 second random interval
+    interval.unref?.();
 
     activeSimulators.set(workspaceId, {
       workspaceId,

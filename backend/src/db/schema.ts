@@ -84,6 +84,10 @@ export const createRequestsWorkspaceModelTimestampIndexSql = `
 CREATE INDEX IF NOT EXISTS idx_requests_workspace_model_timestamp ON requests (workspace_id, model, timestamp DESC, id DESC);
 `;
 
+export const createRequestsWorkspaceErrorTimestampIndexSql = `
+CREATE INDEX IF NOT EXISTS idx_requests_workspace_error_timestamp ON requests (workspace_id, error, timestamp DESC);
+`;
+
 export const createRequestsWorkspaceIndexSql = `
 CREATE INDEX IF NOT EXISTS idx_requests_workspace_id ON requests (workspace_id);
 `;
@@ -98,4 +102,8 @@ CREATE INDEX IF NOT EXISTS idx_workspaces_user_id ON workspaces (user_id);
 
 export const createApiKeysWorkspaceIdIndexSql = `
 CREATE INDEX IF NOT EXISTS idx_api_keys_workspace_id ON api_keys (workspace_id);
+`;
+
+export const createApiKeysHashActiveIndexSql = `
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash_active ON api_keys (key_hash, revoked_at);
 `;

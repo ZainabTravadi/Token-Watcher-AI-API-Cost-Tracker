@@ -103,7 +103,8 @@ import { TokenWatch } from "tokenwatch";
 
 TokenWatch.init({
   apiUrl: "http://localhost:3001",
-  projectId: "demo-app"
+  workspaceId: "ws_xxxxxxxx",
+  apiKey: "tw_live_xxxxx"
 });
 
 TokenWatch.track("request.completed", {
@@ -196,7 +197,8 @@ import { TokenWatch } from "tokenwatch";
 
 TokenWatch.init({
 	apiUrl: "http://localhost:4000",
-	projectId: "demo-app"
+	workspaceId: "ws_xxxxxxxx",
+	apiKey: "tw_live_xxxxx"
 });
 
 TokenWatch.simulate({
@@ -207,3 +209,4 @@ TokenWatch.simulate({
 ```
 
 It exposes `init()`, `track()`, `simulate()`, `startSimulation()`, `stopSimulation()`, `identify()`, and `setEndpoint()` with no runtime dependencies.
+It also exposes `flush()` for graceful process shutdown and `stats()` for optional queue/retry visibility during development.

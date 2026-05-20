@@ -1,5 +1,6 @@
 import { telemetryBus } from "./telemetryBus";
 import { insertTelemetry, insertTelemetryBatch } from "./telemetryRepository";
+import { invalidateAnalyticsCache } from "./analyticsCache";
 import type { TelemetryRecord } from "../types/telemetry";
 import type { IngestTelemetryInput } from "../types/ingest";
 
@@ -10,6 +11,13 @@ export interface IngestResult {
 
 export function ingestTelemetry(workspaceId: string, input: IngestTelemetryInput | IngestTelemetryInput[]): IngestResult {
   const records = Array.isArray(input) ? input : [input];
+  if (records.length === 0) {
+    throw new Error("Telemetry batch must contain at least one record.");
+  }
+  if (records.length > 500) {
+    throw new Error("Telemetry batch cannot contain more than 500 records.");
+  }
+
   const normalized = records.map((r) => normalizeTelemetryInput(workspaceId, r));
 
   const inserted = normalized.length === 1
@@ -19,6 +27,7 @@ export function ingestTelemetry(workspaceId: string, input: IngestTelemetryInput
   for (const row of inserted) {
     telemetryBus.emitTelemetry(row);
   }
+  invalidateAnalyticsCache(workspaceId);
 
   return {
     rows: inserted,
@@ -39,13 +48,21 @@ export function validateTelemetryPayload(payload: unknown): IngestTelemetryInput
     return ((payload as { data: unknown[] }).data).map((item) => validateSingleRecord(item as Record<string, unknown>));
   }
 
+  if (Array.isArray((payload as { requests?: unknown }).requests)) {
+    return ((payload as { requests: unknown[] }).requests).map((item) => validateSingleRecord(item as Record<string, unknown>));
+  }
+
   return [validateSingleRecord(payload as Record<string, unknown>)];
 }
 
 function validateSingleRecord(payload: Record<string, unknown>): IngestTelemetryInput {
-  const route = String(payload.route ?? "/api/chat");
-  const model = String(payload.model ?? "gpt-4o-mini");
-  const provider = String(payload.provider ?? "OpenAI");
+  if (!isPlainObject(payload)) {
+    throw new Error("Telemetry records must be objects.");
+  }
+
+  const route = normalizeText(payload.route, "/api/chat", 180);
+  const model = normalizeText(payload.model, "gpt-4o-mini", 120);
+  const provider = normalizeText(payload.provider, "OpenAI", 80);
 
   return {
     timestamp: Number.isFinite(Number(payload.timestamp)) ? Number(payload.timestamp) : Date.now(),
@@ -57,7 +74,7 @@ function validateSingleRecord(payload: Record<string, unknown>): IngestTelemetry
     total_tokens: normalizeNumber(payload.total_tokens),
     cost_usd: normalizeFloat(payload.cost_usd),
     latency_ms: normalizeNumber(payload.latency_ms),
-    error: payload.error === undefined ? null : payload.error === null ? null : String(payload.error),
+    error: payload.error === undefined ? null : payload.error === null ? null : normalizeText(payload.error, "", 300),
     identity: isPlainObject(payload.identity)
       ? {
           id: String(payload.identity.id ?? "anonymous"),
@@ -92,6 +109,11 @@ function normalizeNumber(value: unknown): number {
 function normalizeFloat(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function normalizeText(value: unknown, fallback: string, maxLength: number): string {
+  const text = String(value ?? fallback).trim() || fallback;
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

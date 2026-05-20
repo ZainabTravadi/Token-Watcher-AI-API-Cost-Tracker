@@ -5,6 +5,7 @@ interface InternalState extends TokenWatchStateSnapshot {
   simulationTimer: ReturnType<typeof setTimeout> | null;
   simulationRunning: boolean;
   simulationStopRequested: boolean;
+  initialized: boolean;
 }
 
 const state: InternalState = {
@@ -16,7 +17,8 @@ const state: InternalState = {
   identity: null,
   simulationTimer: null,
   simulationRunning: false,
-  simulationStopRequested: false
+  simulationStopRequested: false,
+  initialized: false
 };
 
 export function getState(): InternalState {
@@ -82,4 +84,12 @@ export function readSimulationState(): { running: boolean; stopRequested: boolea
     stopRequested: state.simulationStopRequested,
     timer: state.simulationTimer
   };
+}
+
+export function isInitialized(): boolean {
+  return state.initialized;
+}
+
+export function markInitialized(): void {
+  state.initialized = true;
 }

@@ -1,15 +1,15 @@
 import { Router } from "express";
 import { buildAnalyticsSnapshot, buildRealtimeAnalyticsSnapshot } from "../services/analyticsService";
-import { authenticateUser, attachWorkspaceOptional, type AuthenticatedRequest } from "../middleware/auth";
+import { authenticateUser, requireOwnedWorkspace, type AuthenticatedRequest } from "../middleware/auth";
 
 export function createAnalyticsRouter(): Router {
   const router = Router();
 
   // Protected routes that require authentication and workspace context
   router.get(
-    "/analytics/overview",
-    authenticateUser,
-    attachWorkspaceOptional,
+      "/analytics/overview",
+      authenticateUser,
+      requireOwnedWorkspace,
     (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -20,9 +20,9 @@ export function createAnalyticsRouter(): Router {
   );
 
   router.get(
-    "/analytics/endpoints",
-    authenticateUser,
-    attachWorkspaceOptional,
+      "/analytics/endpoints",
+      authenticateUser,
+      requireOwnedWorkspace,
     (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -33,9 +33,9 @@ export function createAnalyticsRouter(): Router {
   );
 
   router.get(
-    "/analytics/models",
-    authenticateUser,
-    attachWorkspaceOptional,
+      "/analytics/models",
+      authenticateUser,
+      requireOwnedWorkspace,
     (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -46,9 +46,9 @@ export function createAnalyticsRouter(): Router {
   );
 
   router.get(
-    "/analytics/recent",
-    authenticateUser,
-    attachWorkspaceOptional,
+      "/analytics/recent",
+      authenticateUser,
+      requireOwnedWorkspace,
     (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -59,9 +59,9 @@ export function createAnalyticsRouter(): Router {
   );
 
   router.get(
-    "/analytics/timeline",
-    authenticateUser,
-    attachWorkspaceOptional,
+      "/analytics/timeline",
+      authenticateUser,
+      requireOwnedWorkspace,
     (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -72,9 +72,9 @@ export function createAnalyticsRouter(): Router {
   );
 
   router.get(
-    "/analytics/snapshot",
-    authenticateUser,
-    attachWorkspaceOptional,
+      "/analytics/snapshot",
+      authenticateUser,
+      requireOwnedWorkspace,
     (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });

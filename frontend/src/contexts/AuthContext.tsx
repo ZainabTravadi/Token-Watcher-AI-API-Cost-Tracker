@@ -19,7 +19,7 @@ export interface WorkspaceInfo {
   webhook_url: string | null;
   created_at: number;
   updated_at: number;
-  apiKey?: { id: string; created_at: number } | null;
+  apiKey?: { id: string; created_at: number; value?: string } | null;
   settings?: Record<string, unknown> | null;
 }
 

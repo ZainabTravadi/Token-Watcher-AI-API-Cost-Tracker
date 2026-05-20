@@ -1,6 +1,12 @@
 import { DEFAULT_SIMULATION_INTERVAL_MS, MODEL_PROFILES, ROUTE_MODEL_MAP, ROUTE_WEIGHTS, normalizeProvider, modelProvider } from "./defaults.js";
 import type { TokenWatchIdentity, TokenWatchSimulationOptions, TokenWatchTelemetryRecord } from "./types.js";
 
+const SIMULATION_INTERVAL_PRESETS = {
+  low: 8000,
+  medium: DEFAULT_SIMULATION_INTERVAL_MS,
+  high: 500
+} as const;
+
 export function createTrackRecord(name: string, workspaceId: string, identity: TokenWatchIdentity | null, options: { timestamp?: number; properties?: Record<string, unknown> } = {}): TokenWatchTelemetryRecord {
   const timestamp = options.timestamp ?? Date.now();
 
@@ -81,12 +87,12 @@ export function createSimulationRecord(workspaceId: string, identity: TokenWatch
   };
 }
 
-export function defaultSimulationIntervalMs(value?: number): number {
+export function defaultSimulationIntervalMs(value?: number, profile: TokenWatchSimulationOptions["profile"] = "medium"): number {
   if (typeof value === "number" && Number.isFinite(value) && value >= 100) {
     return Math.round(value);
   }
 
-  return DEFAULT_SIMULATION_INTERVAL_MS;
+  return SIMULATION_INTERVAL_PRESETS[profile] ?? SIMULATION_INTERVAL_PRESETS.medium;
 }
 
 function createId(): string {

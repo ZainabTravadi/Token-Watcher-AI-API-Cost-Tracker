@@ -9,6 +9,7 @@ import {
   createRequestsWorkspaceModelTimestampIndexSql,
   createRequestsWorkspaceRouteTimestampIndexSql,
   createRequestsWorkspaceTimestampIndexSql,
+  createRequestsWorkspaceErrorTimestampIndexSql,
   createRequestsWorkspaceIndexSql,
   createUsersTableSql,
   createUsersEmailIndexSql,
@@ -16,6 +17,7 @@ import {
   createWorkspacesUserIdIndexSql,
   createApiKeysTableSql,
   createApiKeysWorkspaceIdIndexSql,
+  createApiKeysHashActiveIndexSql,
   createWorkspaceSettingsTableSql
 } from "./schema";
 
@@ -29,6 +31,7 @@ function applySchema(db: Database): void {
   db.exec(createWorkspacesUserIdIndexSql);
   db.exec(createApiKeysTableSql);
   db.exec(createApiKeysWorkspaceIdIndexSql);
+  db.exec(createApiKeysHashActiveIndexSql);
   db.exec(createWorkspaceSettingsTableSql);
   
   ensureSchemaUpdates(db);
@@ -40,6 +43,7 @@ function applySchema(db: Database): void {
   db.exec(createRequestsRouteIndexSql);
   db.exec(createRequestsWorkspaceRouteTimestampIndexSql);
   db.exec(createRequestsWorkspaceModelTimestampIndexSql);
+  db.exec(createRequestsWorkspaceErrorTimestampIndexSql);
   db.exec(createRequestsWorkspaceIndexSql);
 }
 

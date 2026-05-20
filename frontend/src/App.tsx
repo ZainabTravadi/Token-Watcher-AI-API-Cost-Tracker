@@ -15,6 +15,7 @@ import Endpoints from "./pages/app/Endpoints.tsx";
 import Models from "./pages/app/Models.tsx";
 import Requests from "./pages/app/Requests.tsx";
 import Settings from "./pages/app/Settings.tsx";
+import DocsPage from "./pages/docs/DocsPage.tsx";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -73,6 +74,30 @@ const router = createBrowserRouter(
       element: (
         <ProtectedRoute>
           <Settings />
+        </ProtectedRoute>
+      ),
+    },
+    {
+      path: "/docs/getting-started",
+      element: (
+        <ProtectedRoute>
+          <DocsPage slug="getting-started" />
+        </ProtectedRoute>
+      ),
+    },
+    {
+      path: "/docs/sdk-reference",
+      element: (
+        <ProtectedRoute>
+          <DocsPage slug="sdk-reference" />
+        </ProtectedRoute>
+      ),
+    },
+    {
+      path: "/docs/webhooks",
+      element: (
+        <ProtectedRoute>
+          <DocsPage slug="webhooks" />
         </ProtectedRoute>
       ),
     },

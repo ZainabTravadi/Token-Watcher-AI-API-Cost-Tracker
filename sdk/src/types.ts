@@ -6,6 +6,11 @@ export interface TokenWatchInitOptions {
   apiUrl: string;
   endpoint?: string;
   headers?: Record<string, string>;
+  maxQueueSize?: number;
+  batchSize?: number;
+  flushInterval?: number;
+  retryAttempts?: number;
+  debug?: boolean;
 }
 
 export interface TokenWatchIdentity {
@@ -26,9 +31,22 @@ export interface TokenWatchSimulationOptions {
   provider?: TokenWatchProvider;
   model?: string;
   endpoint?: string;
+  profile?: "low" | "medium" | "high";
   intervalMs?: number;
   jitterMs?: number;
   properties?: Record<string, unknown>;
+}
+
+export interface TokenWatchTransportStats {
+  queueSize: number;
+  maxQueueSize: number;
+  inFlight: number;
+  isFlushing: boolean;
+  scheduled: boolean;
+  flushes: number;
+  retries: number;
+  rejected: number;
+  lastError: string | null;
 }
 
 export interface TokenWatchTelemetryRecord {

@@ -1,5 +1,6 @@
 import { getDatabase } from "../db/database";
 import { generateApiKey, generateId, hashApiKey, hashPassword, verifyPassword } from "../utils/auth";
+import { timingSafeEqual } from "node:crypto";
 
 export interface User {
   id: string;
@@ -101,38 +102,45 @@ export function getUserLastLogoutAt(userId: string): number {
 export function createWorkspace(userId: string, name: string): WorkspaceCreationResult | null {
   try {
     const db = getDatabase();
-    const workspaceId = generateId("ws");
-    const now = Date.now();
+    const create = db.transaction(() => {
+      const workspaceId = generateId("ws");
+      const now = Date.now();
 
-    // Create workspace
-    const wsStmt = db.prepare(
-      "INSERT INTO workspaces (id, user_id, name, monthly_budget, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-    );
-    wsStmt.run(workspaceId, userId, name, 100, now, now);
+      const wsStmt = db.prepare(
+        "INSERT INTO workspaces (id, user_id, name, monthly_budget, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      );
+      wsStmt.run(workspaceId, userId, name, 100, now, now);
 
-    // Create workspace settings
-    const settingsId = generateId("wss");
-    const settingsStmt = db.prepare(
-      "INSERT INTO workspace_settings (id, workspace_id, alert_on_high_cost, alert_on_errors, alert_cost_threshold, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    );
-    settingsStmt.run(settingsId, workspaceId, 1, 1, 50, now, now);
+      const settingsId = generateId("wss");
+      const settingsStmt = db.prepare(
+        "INSERT INTO workspace_settings (id, workspace_id, alert_on_high_cost, alert_on_errors, alert_cost_threshold, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      );
+      settingsStmt.run(settingsId, workspaceId, 1, 1, 50, now, now);
 
-    // Generate API key for the workspace
-    const apiKey = generateWorkspaceApiKey(workspaceId);
+      const apiKeyId = generateId("key");
+      const plainKey = generateApiKey();
+      const keyHash = hashApiKey(plainKey);
+      const keyStmt = db.prepare("INSERT INTO api_keys (id, workspace_id, key_hash, created_at) VALUES (?, ?, ?, ?)");
+      keyStmt.run(apiKeyId, workspaceId, keyHash, now);
+
+      return {
+        workspace: { id: workspaceId, user_id: userId, name, monthly_budget: 100, webhook_url: null, created_at: now, updated_at: now },
+        apiKey: plainKey
+      };
+    });
+
+    const creation = create() as WorkspaceCreationResult;
 
     // Start simulator for this workspace (async to not block signup)
     try {
       const { startWorkspaceSimulator } = require("./workspaceSimulatorManager");
-      setImmediate(() => startWorkspaceSimulator(workspaceId));
+      setImmediate(() => startWorkspaceSimulator(creation.workspace.id));
     } catch (error) {
       // Simulator startup is not critical for workspace creation
       console.warn(`[createWorkspace] Failed to start simulator:`, error);
     }
 
-    return {
-      workspace: { id: workspaceId, user_id: userId, name, monthly_budget: 100, webhook_url: null, created_at: now, updated_at: now },
-      apiKey,
-    };
+    return creation;
   } catch (error) {
     console.error(`[createWorkspace] Error creating workspace for user ${userId}:`, error);
     return null;
@@ -190,6 +198,7 @@ export function updateWorkspaceSettings(
 
     const stmt = db.prepare(`UPDATE workspace_settings SET ${setClauses}, updated_at = ? WHERE workspace_id = ?`);
     stmt.run(...values, now, workspaceId);
+    invalidateWorkspaceCaches(workspaceId);
 
     const selectStmt = db.prepare("SELECT * FROM workspace_settings WHERE workspace_id = ?");
     return selectStmt.get(workspaceId) as WorkspaceSettings | null;
@@ -238,17 +247,24 @@ export function getWorkspaceApiKey(workspaceId: string): ApiKey | null {
  */
 export function verifyApiKey(plainKey: string): { workspaceId: string; workspace: Workspace } | null {
   try {
+    if (!plainKey.startsWith("tw_live_") || plainKey.length < 24) {
+      return null;
+    }
+
     const db = getDatabase();
     const keyHash = hashApiKey(plainKey);
 
     const stmt = db.prepare(
-      `SELECT api_keys.workspace_id, workspaces.* FROM api_keys
+      `SELECT api_keys.workspace_id, api_keys.key_hash, workspaces.* FROM api_keys
        JOIN workspaces ON api_keys.workspace_id = workspaces.id
        WHERE api_keys.key_hash = ? AND api_keys.revoked_at IS NULL`
     );
 
     const result = stmt.get(keyHash) as any;
     if (!result) {
+      return null;
+    }
+    if (!safeEqualHex(keyHash, result.key_hash)) {
       return null;
     }
 
@@ -295,6 +311,16 @@ export function regenerateWorkspaceApiKey(workspaceId: string): string | null {
   }
 }
 
+function safeEqualHex(a: string, b: string): boolean {
+  try {
+    const left = Buffer.from(a, "hex");
+    const right = Buffer.from(b, "hex");
+    return left.length === right.length && timingSafeEqual(left, right);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Update workspace settings (budget, webhook, name)
  */
@@ -319,10 +345,20 @@ export function updateWorkspace(
       `UPDATE workspaces SET ${setClauses}, updated_at = ? WHERE id = ? AND user_id = ?`
     );
     stmt.run(...values, now, workspaceId, userId);
+    invalidateWorkspaceCaches(workspaceId);
 
     return getWorkspace(workspaceId, userId);
   } catch (error) {
     return null;
+  }
+}
+
+function invalidateWorkspaceCaches(workspaceId: string): void {
+  try {
+    const { invalidateAnalyticsCache } = require("./analyticsCache");
+    invalidateAnalyticsCache(workspaceId);
+  } catch {
+    // Cache invalidation is best effort; reads remain correct after TTL.
   }
 }
 
@@ -337,6 +373,12 @@ export function deleteWorkspace(workspaceId: string, userId: string): boolean {
 
     // Stop simulator if it's running
     if (result.changes > 0) {
+      try {
+        const { invalidateAnalyticsCache } = require("./analyticsCache");
+        invalidateAnalyticsCache(workspaceId);
+      } catch (error) {
+        // Cache cleanup is best effort; database deletion is authoritative.
+      }
       try {
         const { stopWorkspaceSimulator } = require("./workspaceSimulatorManager");
         stopWorkspaceSimulator(workspaceId);

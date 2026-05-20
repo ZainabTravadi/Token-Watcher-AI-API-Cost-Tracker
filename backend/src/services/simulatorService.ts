@@ -7,7 +7,7 @@ import {
   getTelemetryCount
 } from "./telemetryRepository";
 import { getDatabase } from "../db/database";
-import { generateId } from "../utils/auth";
+import { generateApiKey, generateId, hashApiKey } from "../utils/auth";
 
 export interface SimulatorState {
   running: boolean;
@@ -55,7 +55,7 @@ function getDemoWorkspaceId(): string {
     const keyStmt = db.prepare(
       "INSERT INTO api_keys (id, workspace_id, key_hash, created_at) VALUES (?, ?, ?, ?)"
     );
-    keyStmt.run(apiKeyId, workspaceId, apiKeyId, now);
+    keyStmt.run(apiKeyId, workspaceId, hashApiKey(generateApiKey()), now);
 
     return workspaceId;
   } catch (error) {
@@ -76,7 +76,7 @@ export function seedTelemetryDataset(force = false): number {
   const recordsWithWorkspace = records.map((r) => ({ ...r, workspace_id: workspaceId }));
   
   const inserted = insertTelemetryBatch(recordsWithWorkspace);
-  telemetryBus.emitSeeded(inserted.length);
+  telemetryBus.emitSeeded(workspaceId, inserted.length);
   return inserted.length;
 }
 

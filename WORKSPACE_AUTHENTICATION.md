@@ -36,9 +36,10 @@ CREATE TABLE workspaces (
 ```sql
 CREATE TABLE api_keys (
   id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL UNIQUE,
+  workspace_id TEXT NOT NULL,
   key_hash TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL,
+  revoked_at INTEGER,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 )
 ```
@@ -70,7 +71,7 @@ FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ```
 POST /api/auth/signup
 Body: { email, password }
-Response: { user, workspace, apiKey }
+Response: { user, workspace }
 
 1. Validate email/password
 2. Hash password with scrypt (16-byte salt)
@@ -78,7 +79,7 @@ Response: { user, workspace, apiKey }
 4. Create default workspace
 5. Generate initial API key (tw_live_xxxxx format)
 6. Issue JWT token in httpOnly cookie
-7. Return user, workspace, and API key data
+7. Return user and workspace. The initial API key value is revealed once as `workspace.apiKey.value`.
 ```
 
 ### Login
@@ -147,7 +148,7 @@ Response: { apiKey }
 
 1. Verify user owns workspace
 2. Generate new API key
-3. Revoke old key (delete from api_keys table)
+3. Revoke old key by setting `revoked_at`
 4. Return new key
 ```
 
@@ -267,12 +268,11 @@ TokenWatch.init({
 ### Usage
 ```typescript
 // SDK automatically includes workspace context
-TokenWatch.recordRequest({
-  route: "POST /api/chat",
-  model: "gpt-4",
-  cost_usd: 0.05,
-  // ... other fields
+await TokenWatch.track("request.completed", {
+  properties: { route: "/api/chat" }
 });
+
+await TokenWatch.flush();
 ```
 
 ## Middleware Pipeline

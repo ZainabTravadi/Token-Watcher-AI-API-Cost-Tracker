@@ -1,6 +1,7 @@
 import { Router, type Response } from "express";
 import { authenticateUser, type AuthenticatedRequest } from "../middleware/auth";
 import {
+  createWorkspace,
   deleteWorkspace,
   getWorkspace,
   getWorkspaceApiKey,
@@ -68,6 +69,38 @@ export function createWorkspacesRouter(): Router {
   const getWorkspaceId = (req: AuthenticatedRequest): string | null => {
     return typeof req.params.id === "string" ? req.params.id : null;
   };
+
+  /**
+   * Create workspace
+   * POST /api/workspaces
+   */
+  router.post("/", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const nameValidation = validateWorkspaceName(req.body?.name);
+      if (!nameValidation.valid) {
+        res.status(400).json({ error: nameValidation.error });
+        return;
+      }
+
+      const created = createWorkspace(req.userId!, String(req.body?.name ?? "New Workspace").trim());
+      if (!created) {
+        res.status(500).json({ error: "Failed to create workspace" });
+        return;
+      }
+
+      const apiKey = getWorkspaceApiKey(created.workspace.id);
+      res.status(201).json({
+        workspace: {
+          ...created.workspace,
+          apiKey: apiKey ? { id: apiKey.id, created_at: apiKey.created_at, value: created.apiKey } : null,
+          settings: getWorkspaceSettings(created.workspace.id),
+        },
+      });
+    } catch (error) {
+      console.error("[workspaces:create:error]", error);
+      res.status(500).json({ error: "Failed to create workspace" });
+    }
+  });
 
   /**
    * List workspaces for authenticated user

@@ -1,7 +1,7 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { getConfig } from "../config/env";
 import { verifyJwt } from "../utils/auth";
-import { getUserLastLogoutAt, verifyApiKey } from "../services/authService";
+import { getUserLastLogoutAt, getUserWorkspaces, getWorkspace, verifyApiKey } from "../services/authService";
 
 export interface AuthenticatedRequest extends Request {
   userId?: string;
@@ -83,5 +83,35 @@ export function attachWorkspaceOptional(req: AuthenticatedRequest, res: Response
   if (workspaceId && typeof workspaceId === "string") {
     req.workspaceId = workspaceId;
   }
+  next();
+}
+
+export function requireOwnedWorkspace(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  if (!req.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const requestedWorkspaceId =
+    (typeof req.params.workspaceId === "string" ? req.params.workspaceId : undefined) ||
+    (typeof req.params.id === "string" ? req.params.id : undefined) ||
+    (typeof req.query.workspaceId === "string" ? req.query.workspaceId : undefined) ||
+    (typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined);
+
+  const workspaceId = requestedWorkspaceId || getUserWorkspaces(req.userId)[0]?.id;
+
+  if (!workspaceId) {
+    res.status(400).json({ error: "Workspace ID required" });
+    return;
+  }
+
+  const workspace = getWorkspace(workspaceId, req.userId);
+  if (!workspace) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  req.workspaceId = workspace.id;
+  (req as any).workspace = workspace;
   next();
 }

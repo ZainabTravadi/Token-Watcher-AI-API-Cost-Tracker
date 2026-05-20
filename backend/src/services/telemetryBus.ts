@@ -3,7 +3,7 @@ import type { TelemetryRecord } from "../types/telemetry";
 
 export type TelemetryBusEvents = {
   telemetry: (record: TelemetryRecord) => void;
-  seeded: (count: number) => void;
+  seeded: (event: { workspaceId: string; count: number }) => void;
 };
 
 class TelemetryBus extends EventEmitter {
@@ -11,8 +11,8 @@ class TelemetryBus extends EventEmitter {
     this.emit("telemetry", record);
   }
 
-  emitSeeded(count: number): void {
-    this.emit("seeded", count);
+  emitSeeded(workspaceId: string, count: number): void {
+    this.emit("seeded", { workspaceId, count });
   }
 }
 

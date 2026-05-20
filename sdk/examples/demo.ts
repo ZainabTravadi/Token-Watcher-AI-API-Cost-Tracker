@@ -4,8 +4,10 @@ const apiUrl = process.env.TOKENWATCH_API_URL ?? "http://localhost:3001";
 
 TokenWatch.init({
   apiUrl,
-  projectId: process.env.TOKENWATCH_PROJECT_ID ?? "demo-app",
-  endpoint: "/api/ingest",
+  workspaceId: process.env.TOKENWATCH_WORKSPACE_ID ?? "demo-app",
+  apiKey: process.env.TOKENWATCH_API_KEY ?? "demo-key-12345",
+  endpoint: "/ingest",
+  debug: process.env.TOKENWATCH_DEBUG === "true",
   headers: {
     "X-TokenWatch-Demo": "true"
   }
@@ -20,17 +22,18 @@ const controller = TokenWatch.startSimulation({
   provider: "openai",
   model: "gpt-4o",
   endpoint: "/api/chat",
+  profile: "medium",
   intervalMs: Number(process.env.TOKENWATCH_SIM_INTERVAL_MS ?? "4000")
 });
 
 process.on("SIGINT", () => {
   controller.stop();
-  process.exit(0);
+  void TokenWatch.flush().finally(() => process.exit(0));
 });
 
 process.on("SIGTERM", () => {
   controller.stop();
-  process.exit(0);
+  void TokenWatch.flush().finally(() => process.exit(0));
 });
 
 setInterval(() => {

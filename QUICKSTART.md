@@ -96,11 +96,10 @@ curl -X POST http://localhost:3001/api/ingest \
   -H "Content-Type: application/json" \
   -H "X-API-Key: tw_live_..." \
   -d '{
-    "requests": [{
-      "route": "POST /api/chat",
-      "model": "gpt-4",
-      "provider": "openai",
-      "status": 200,
+    "data": [{
+      "route": "/api/chat",
+      "model": "gpt-4o",
+      "provider": "OpenAI",
       "latency_ms": 500,
       "input_tokens": 100,
       "output_tokens": 50,
@@ -145,7 +144,7 @@ Open http://localhost:5173 in browser
 ## SDK Usage Example
 
 ```typescript
-import TokenWatch from "@tokenwatch/sdk";
+import { TokenWatch } from "tokenwatch";
 
 // Initialize with workspace credentials
 TokenWatch.init({
@@ -154,18 +153,18 @@ TokenWatch.init({
   apiUrl: "http://localhost:3001"
 });
 
-// Record API requests
-await TokenWatch.recordRequest({
-  route: "POST /api/chat",
-  model: "gpt-4",
-  provider: "openai",
-  status: 200,
-  latency_ms: 523,
-  input_tokens: 150,
-  output_tokens: 75,
-  cost_usd: 0.0075,
-  timestamp: Date.now()
+await TokenWatch.track("request.completed", {
+  properties: { route: "/api/chat", status: 200 }
 });
+
+await TokenWatch.simulate({
+  endpoint: "/api/chat",
+  model: "gpt-4o",
+  provider: "openai",
+  profile: "medium"
+});
+
+await TokenWatch.flush();
 ```
 
 ## Environment Configuration
@@ -205,7 +204,7 @@ SELECT id, email, created_at FROM users;
 SELECT id, user_id, name, created_at FROM workspaces;
 
 # View telemetry:
-SELECT route, model, cost_usd, created_at FROM requests LIMIT 10;
+SELECT route, model, cost_usd, timestamp FROM requests LIMIT 10;
 ```
 
 ## Troubleshooting

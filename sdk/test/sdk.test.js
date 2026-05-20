@@ -1,20 +1,37 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { TokenWatch } from "../dist/esm/index.js";
+import { __resetTransportForTests } from "../dist/esm/transport.js";
+
+async function withFetch(fetchImpl, run) {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  globalThis.fetch = fetchImpl;
+  console.warn = () => {};
+  __resetTransportForTests();
+
+  try {
+    await run();
+  } finally {
+    __resetTransportForTests();
+    console.warn = originalWarn;
+    globalThis.fetch = originalFetch;
+  }
+}
 
 test("init and setEndpoint update the client state", async () => {
   const requests = [];
-  const originalFetch = globalThis.fetch;
 
-  globalThis.fetch = async (url, init) => {
-    requests.push({ url, init });
-    return new Response(null, { status: 204 });
-  };
-
-  try {
+  await withFetch(
+    async (url, init) => {
+      requests.push({ url, init });
+      return new Response(null, { status: 204 });
+    },
+    async () => {
     TokenWatch.init({
       apiUrl: "http://localhost:4000",
-      projectId: "demo-app"
+      workspaceId: "demo-app",
+      apiKey: "test-key-123"
     });
 
     TokenWatch.setEndpoint("/api/telemetry");
@@ -25,25 +42,24 @@ test("init and setEndpoint update the client state", async () => {
 
     const body = JSON.parse(requests[0].init.body);
     assert.equal(body.event, "request.sent");
-    assert.equal(body.projectId, "demo-app");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+    assert.equal(body.workspace_id, "demo-app");
+    }
+  );
 });
 
 test("simulate sends a realistic telemetry payload", async () => {
   const requests = [];
-  const originalFetch = globalThis.fetch;
 
-  globalThis.fetch = async (url, init) => {
-    requests.push({ url, init });
-    return new Response(null, { status: 204 });
-  };
-
-  try {
+  await withFetch(
+    async (url, init) => {
+      requests.push({ url, init });
+      return new Response(null, { status: 204 });
+    },
+    async () => {
     TokenWatch.init({
       apiUrl: "http://localhost:4000",
-      projectId: "demo-app",
+      workspaceId: "demo-app",
+      apiKey: "test-key-456",
       endpoint: "/api/requests"
     });
 
@@ -58,7 +74,6 @@ test("simulate sends a realistic telemetry payload", async () => {
     assert.equal(record.route, "/api/chat");
     assert.equal(record.provider, "OpenAI");
     assert.equal(record.model, "gpt-4o");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+    }
+  );
 });

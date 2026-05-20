@@ -5,6 +5,7 @@ import { authenticateSDK, type AuthenticatedRequest } from "../middleware/auth";
 const ingestWindowMs = 10_000;
 const ingestBurstLimit = 120;
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
+let lastRateLimitCleanup = 0;
 
 export function createIngestRouter(): Router {
   const router = Router();
@@ -39,6 +40,7 @@ function handleIngest(request: AuthenticatedRequest, response: any): void {
 
 function checkRateLimit(ip: string): { allowed: boolean; retryAfterMs?: number } {
   const now = Date.now();
+  cleanupRateLimits(now);
   const current = requestCounts.get(ip);
 
   if (!current || now >= current.resetAt) {
@@ -52,4 +54,17 @@ function checkRateLimit(ip: string): { allowed: boolean; retryAfterMs?: number }
 
   current.count += 1;
   return { allowed: true };
+}
+
+function cleanupRateLimits(now: number): void {
+  if (now - lastRateLimitCleanup < ingestWindowMs) {
+    return;
+  }
+
+  lastRateLimitCleanup = now;
+  for (const [key, value] of requestCounts) {
+    if (now >= value.resetAt) {
+      requestCounts.delete(key);
+    }
+  }
 }

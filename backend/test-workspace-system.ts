@@ -146,7 +146,7 @@ async function main() {
     }
 
     workspaceId = res.data.workspace?.id;
-    apiKey = res.data.workspace?.apiKey?.id;
+    apiKey = res.data.workspace?.apiKey?.value;
 
     if (!workspaceId || !apiKey) {
       return {
@@ -210,10 +210,10 @@ async function main() {
       "X-API-Key": apiKey,
     });
 
-    if (res.status !== 200) {
+    if (res.status !== 201) {
       return {
         pass: false,
-        message: `Expected 200, got ${res.status}. Response: ${JSON.stringify(res.data)}`,
+        message: `Expected 201, got ${res.status}. Response: ${JSON.stringify(res.data)}`,
       };
     }
 
@@ -310,7 +310,7 @@ async function main() {
     }
 
     workspaceId2 = res.data.workspace.id;
-    apiKey2 = res.data.workspace.apiKey?.id;
+    apiKey2 = res.data.workspace.apiKey?.value;
 
     if (!workspaceId2 || !apiKey2) {
       return {
@@ -424,7 +424,7 @@ async function main() {
       "X-API-Key": newApiKey,
     });
 
-    if (newIngestRes.status !== 200) {
+    if (newIngestRes.status !== 201) {
       return {
         pass: false,
         message: "New API key should work after rotation",
@@ -459,7 +459,7 @@ async function main() {
       "X-API-Key": apiKey2,
     });
 
-    if (res.status !== 200) {
+    if (res.status !== 201) {
       return {
         pass: false,
         message: `Failed to ingest to workspace 2: ${res.status}`,

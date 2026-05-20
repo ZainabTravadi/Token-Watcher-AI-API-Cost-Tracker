@@ -86,7 +86,7 @@ export default function Settings() {
     setError(null);
 
     if (workspaceChanged) {
-      setPlainApiKey(null);
+      setPlainApiKey(currentWorkspace.apiKey?.value ?? null);
       setShowApiKey(false);
       setDeleteConfirmation("");
       setRotateDialogOpen(false);
