@@ -2,6 +2,11 @@ import { Router, Request, Response } from "express";
 import { getConfig } from "../config/env";
 import { getTelemetryCount } from "../services/telemetryRepository";
 import { getDatabase } from "../db/database";
+import { getActiveSseConnections } from "../services/realtimeStreamService";
+import { getActiveSimulatorCount } from "../services/workspaceSimulatorManager";
+import fs from "node:fs";
+import path from "node:path";
+import { getDatabasePath } from "../db/database";
 
 // Get version from package.json at runtime
 function getVersionInfo() {
@@ -63,6 +68,16 @@ export function createHealthRouter(): Router {
     const telemetryCount = getTelemetryCount();
     const versionInfo = getVersionInfo();
     const dbStatus = getDatabaseStatus();
+    let dbFileSize = null;
+    let walFileSize = null;
+    try {
+      const dbPath = getDatabasePath();
+      const walPath = `${dbPath}-wal`;
+      dbFileSize = fs.statSync(dbPath).size;
+      walFileSize = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0;
+    } catch {
+      // ignore
+    }
 
     // Map node environment to display environment
     const envMap: Record<string, "development" | "staging" | "production"> = {
@@ -85,9 +100,19 @@ export function createHealthRouter(): Router {
         port: config.port
       },
       database: dbStatus,
+      dbFiles: {
+        path: getDatabasePath(),
+        fileSizeBytes: dbFileSize,
+        walSizeBytes: walFileSize,
+      },
+      operational: {
+        activeSseConnections: getActiveSseConnections(),
+        activeSimulators: getActiveSimulatorCount(),
+      },
       simulator: {
-        status: "live",
-        startTime: process.env.SIMULATOR_START_TIME || new Date().toISOString(),
+        enabled: config.enableSimulators,
+        status: config.enableSimulators ? "live" : "disabled",
+        startTime: config.enableSimulators ? process.env.SIMULATOR_START_TIME || new Date().toISOString() : null,
         seededRows: 0,
         totalRows: telemetryCount
       },

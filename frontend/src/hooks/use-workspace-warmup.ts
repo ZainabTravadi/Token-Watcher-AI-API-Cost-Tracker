@@ -45,8 +45,10 @@ export function useWorkspaceWarmup(): WorkspaceWarmupState {
         // Calculate bootstrap progress (max 100 at TARGET_RECORDS)
         const bootstrappingPercent = Math.min((recordsGenerated / TARGET_RECORDS_FOR_WARMUP) * 100, 100);
 
+        const isWarmingUp = running || (recordsGenerated > 0 && recordsGenerated < TARGET_RECORDS_FOR_WARMUP);
+
         setWarmupState({
-          isWarmingUp: running || recordsGenerated < TARGET_RECORDS_FOR_WARMUP,
+          isWarmingUp,
           recordsGenerated,
           uptime,
           bootstrappingPercent,

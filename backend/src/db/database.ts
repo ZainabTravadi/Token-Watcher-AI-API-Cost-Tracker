@@ -66,6 +66,15 @@ export function getDatabase(): Database {
   database = new Database(resolvedDatabasePath);
   database.pragma("journal_mode = WAL");
   database.pragma("foreign_keys = ON");
+  // Set a busy timeout to reduce immediate failures when the DB is briefly locked
+  database.pragma("busy_timeout = 5000");
+  // Perform a checkpoint on startup to keep WAL from growing unbounded across restarts
+  try {
+    // TRUNCATE will try to move WAL contents back into the main DB and shrink the WAL
+    database.pragma("wal_checkpoint(TRUNCATE)");
+  } catch {
+    // Best-effort only
+  }
   applySchema(database);
 
   return database;
@@ -80,6 +89,18 @@ export function closeDatabase(): void {
     return;
   }
 
+  try {
+    // Run a checkpoint before closing to flush WAL contents
+    database.pragma("wal_checkpoint(TRUNCATE)");
+  } catch {
+    // ignore
+  }
+
   database.close();
   database = null;
+}
+
+export function getDatabasePath(): string {
+  const config = getConfig();
+  return path.resolve(config.databasePath);
 }

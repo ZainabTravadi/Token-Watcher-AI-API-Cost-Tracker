@@ -10,6 +10,7 @@ import { getDatabase } from "../db/database";
 import { generateApiKey, generateId, hashApiKey } from "../utils/auth";
 
 export interface SimulatorState {
+  enabled: boolean;
   running: boolean;
   seededRows: number;
   totalRows: number;
@@ -84,6 +85,7 @@ export function startTelemetrySimulator(): SimulatorState {
   const seededRows = seedTelemetryDataset(false);
 
   return {
+    enabled: true,
     running: false,
     seededRows,
     totalRows: getTelemetryCount()
@@ -95,6 +97,7 @@ export function stopTelemetrySimulator(): void {
 
 export function getSimulatorStatus(): SimulatorState {
   return {
+    enabled: false,
     running: false,
     seededRows: 0,
     totalRows: getTelemetryCount()

@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
+const JWT_LIFESPAN_SECONDS = 30 * 24 * 60 * 60;
+
 /**
  * Hash a password using scrypt
  */
@@ -54,10 +56,10 @@ export function hashApiKey(key: string): string {
  * Create a JWT token
  */
 export function createJwt(userId: string, secret: string): string {
+  const iat = Math.floor(Date.now() / 1000);
+  const exp = iat + JWT_LIFESPAN_SECONDS;
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(JSON.stringify({ userId, iat: Math.floor(Date.now() / 1000) })).toString(
-    "base64url"
-  );
+  const payload = Buffer.from(JSON.stringify({ userId, iat, exp })).toString("base64url");
 
   const signature = crypto
     .createHmac("sha256", secret)
@@ -67,10 +69,16 @@ export function createJwt(userId: string, secret: string): string {
   return `${header}.${payload}.${signature}`;
 }
 
+interface JwtPayload {
+  userId: string;
+  iat: number;
+  exp: number;
+}
+
 /**
  * Verify and decode a JWT token
  */
-export function verifyJwt(token: string, secret: string): { userId: string; iat: number } | null {
+export function verifyJwt(token: string, secret: string): JwtPayload | null {
   try {
     const [headerB64, payloadB64, signatureB64] = token.split(".");
     if (!headerB64 || !payloadB64 || !signatureB64) {
@@ -87,7 +95,22 @@ export function verifyJwt(token: string, secret: string): { userId: string; iat:
     }
 
     const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
-    return payload as { userId: string; iat: number };
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      typeof payload.userId !== "string" ||
+      typeof payload.iat !== "number" ||
+      typeof payload.exp !== "number"
+    ) {
+      return null;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp <= now || payload.iat > now || payload.iat <= 0) {
+      return null;
+    }
+
+    return payload as JwtPayload;
   } catch {
     return null;
   }

@@ -4,17 +4,24 @@ import { getConfig } from "../config/env";
 import { buildRealtimeAnalyticsSnapshot } from "../services/analyticsService";
 import { getTelemetryCount } from "../services/telemetryRepository";
 import { startTelemetrySimulator } from "../services/simulatorService";
-import { startSdkDemo } from "../services/demoRunner";
+import { startSdkDemo, stopSdkDemo } from "../services/demoRunner";
 import { stopAllSimulators } from "../services/workspaceSimulatorManager";
 
 export async function startServer(): Promise<void> {
   const config = getConfig();
   const database = getDatabase();
-  const simulatorState = startTelemetrySimulator();
-    const firstWorkspace = database.prepare("SELECT id FROM workspaces ORDER BY created_at DESC LIMIT 1").get() as { id: string } | undefined;
-    const analytics = firstWorkspace ? buildRealtimeAnalyticsSnapshot(firstWorkspace.id) : null;
+  // Startup warnings for ops
+  if (config.nodeEnv === "production" && !process.env.TELEMETRY_RETENTION_DAYS) {
+    // eslint-disable-next-line no-console
+    console.warn("[startup] NOTICE: TELEMETRY_RETENTION_DAYS not set. Consider configuring retention to control DB growth.");
+  }
+  const simulatorState = config.enableSimulators
+    ? startTelemetrySimulator()
+    : { running: false, enabled: false, seededRows: 0, totalRows: getTelemetryCount() };
+  const firstWorkspace = database.prepare("SELECT id FROM workspaces ORDER BY created_at DESC LIMIT 1").get() as { id: string } | undefined;
+  const analytics = firstWorkspace ? buildRealtimeAnalyticsSnapshot(firstWorkspace.id) : null;
   const apiUrl = `http://localhost:${config.port}`;
-  const demoProcess = startSdkDemo(apiUrl);
+  const demoProcess = config.enableSimulators ? startSdkDemo(apiUrl) : null;
 
   const app = createApp();
 
@@ -25,7 +32,10 @@ export async function startServer(): Promise<void> {
     process.stdout.write(`${separator}\n`);
     process.stdout.write(`Server URL           http://localhost:${config.port}\n`);
     process.stdout.write(`Database status      connected (${database.name ?? config.databasePath})\n`);
-    process.stdout.write(`Telemetry status     seeded ${simulatorState.seededRows.toLocaleString()} rows · sdk demo ${demoProcess ? "running" : "not started"}\n`);
+    const telemetryStatus = config.enableSimulators
+      ? `Telemetry status     seeded ${simulatorState.seededRows.toLocaleString()} rows · sdk demo ${demoProcess ? "running" : "not started"}\n`
+      : "Telemetry status     disabled · sdk demo disabled\n";
+    process.stdout.write(telemetryStatus);
     process.stdout.write(`Ingest API           ${apiUrl}/api/ingest\n`);
     process.stdout.write(`Requests generated   ${getTelemetryCount()} rows\n`);
     if (analytics) {
@@ -40,6 +50,7 @@ export async function startServer(): Promise<void> {
   const gracefulShutdown = () => {
     console.info("\n[server] Shutting down gracefully...");
     stopAllSimulators();
+    stopSdkDemo();
     server.close(() => {
       console.info("[server] Server closed");
       process.exit(0);

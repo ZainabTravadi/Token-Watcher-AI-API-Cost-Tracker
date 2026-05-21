@@ -21,16 +21,18 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
       {
         heading: "Send your first event",
         body: [
-          "The SDK sends to /api/ingest with X-API-Key. The backend derives workspace ownership from the key, so payloads cannot choose another workspace."
+          "The SDK posts to the configured ingest endpoint (default `/ingest`) and includes the workspace API key in `X-API-Key`.",
+          "The backend verifies the key server-side and attaches the event to that workspace; payloads cannot claim another workspace."
         ],
-        code: "import { TokenWatch } from \"tokenwatch\";\n\nTokenWatch.init({\n  apiUrl: \"http://localhost:3001\",\n  workspaceId: \"ws_xxxxxxxx\",\n  apiKey: \"tw_live_xxxxx\"\n});\n\nawait TokenWatch.track(\"request.completed\", {\n  properties: { route: \"/api/chat\" }\n});\nawait TokenWatch.flush();"
+        code: "import * as TokenWatch from 'tokenwatch';\n\nTokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxxxxxxx', apiKey: 'tw_live_xxxxx' });\n\nawait TokenWatch.track('request.completed', { properties: { route: '/api/chat' } });\nawait TokenWatch.flush();"
       },
       {
         heading: "Use the simulator",
         body: [
-          "Simulation is useful for local dashboards and demos. Profiles change event cadence while preserving the same ingestion path as real SDK traffic."
+          "Local simulation (SDK `startSimulation`) produces synthetic telemetry client-side; workspace simulators (`workspaceSimulatorManager`) generate server-side traffic that flows through the same ingest API.",
+          "Server-side simulators are enabled by default in development and intentionally disabled in production unless `ENABLE_SIMULATORS=true`."
         ],
-        code: "const simulation = TokenWatch.startSimulation({ profile: \"medium\" });\n\n// later\nsimulation.stop();\nawait TokenWatch.flush();"
+        code: "// Client-side simulation\nconst simulation = TokenWatch.startSimulation({ profile: 'medium' });\n\n// stop later\nsimulation.stop();\nawait TokenWatch.flush();"
       }
     ]
   },
@@ -40,15 +42,15 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
       {
         heading: "Initialization",
         body: [
-          "Only apiUrl, workspaceId, and apiKey are required. Operational controls are optional and keep safe defaults when omitted."
+          "Only `apiUrl`, `workspaceId`, and `apiKey` are required. Operational controls (`batchSize`, `flushInterval`, `maxQueueSize`, `retryAttempts`) are optional and have safe defaults."
         ],
         code: "TokenWatch.init({\n  apiUrl: \"https://tokenwatch.example.com\",\n  workspaceId: \"ws_xxxxxxxx\",\n  apiKey: \"tw_live_xxxxx\",\n  maxQueueSize: 1000,\n  batchSize: 50,\n  flushInterval: 25,\n  retryAttempts: 3,\n  debug: false\n});"
       },
       {
         heading: "Delivery behavior",
         body: [
-          "Events batch for a short interval or flush when batchSize is reached. 4xx responses are treated as permanent, 5xx and network failures retry with jittered backoff, and flush() resolves when queued delivery completes.",
-          "stats() is intended for development and operational visibility. Debug logging is off by default."
+          "Events are queued in a bounded in-memory queue and flushed in groups. 4xx responses are treated as permanent failures, while 5xx and network errors are retried with a jittered backoff. `flush()` waits for outstanding deliveries.",
+          "Use `stats()` for operational visibility: queue size, in-flight requests, rejected counts, retries, and last error."
         ],
         code: "await TokenWatch.track(\"checkout.llm_call\");\nawait TokenWatch.simulate({ profile: \"high\" });\nawait TokenWatch.flush();\n\nconsole.log(TokenWatch.stats());"
       }

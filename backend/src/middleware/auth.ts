@@ -9,19 +9,16 @@ export interface AuthenticatedRequest extends Request {
 }
 
 /**
- * Middleware to authenticate user via JWT cookie or Authorization header or query parameter
+ * Middleware to authenticate user via JWT cookie or Authorization header only
  */
 export function authenticateUser(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   try {
     const config = getConfig();
     
-    // Check for JWT in cookie, Authorization header, or query parameter
+    // Check for JWT in cookie or Authorization header only
     let token = req.cookies?.["tokenwatch_auth"];
     if (!token && req.headers.authorization?.startsWith("Bearer ")) {
       token = req.headers.authorization.slice(7);
-    }
-    if (!token && typeof req.query.token === "string") {
-      token = req.query.token;
     }
 
     if (!token) {
@@ -53,7 +50,7 @@ export function authenticateUser(req: AuthenticatedRequest, res: Response, next:
  */
 export function authenticateSDK(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   try {
-    const apiKey = req.headers["x-api-key"] || req.query.apiKey;
+    const apiKey = req.headers["x-api-key"];
 
     if (!apiKey || typeof apiKey !== "string") {
       res.status(401).json({ error: "Missing API key" });

@@ -1,3 +1,4 @@
+import { getConfig } from "../config/env";
 import { getDatabase } from "../db/database";
 import { generateApiKey, generateId, hashApiKey, hashPassword, verifyPassword } from "../utils/auth";
 import { timingSafeEqual } from "node:crypto";
@@ -131,13 +132,15 @@ export function createWorkspace(userId: string, name: string): WorkspaceCreation
 
     const creation = create() as WorkspaceCreationResult;
 
-    // Start simulator for this workspace (async to not block signup)
-    try {
-      const { startWorkspaceSimulator } = require("./workspaceSimulatorManager");
-      setImmediate(() => startWorkspaceSimulator(creation.workspace.id));
-    } catch (error) {
-      // Simulator startup is not critical for workspace creation
-      console.warn(`[createWorkspace] Failed to start simulator:`, error);
+    if (getConfig().enableSimulators) {
+      // Start simulator for this workspace (async to not block signup)
+      try {
+        const { startWorkspaceSimulator } = require("./workspaceSimulatorManager");
+        setImmediate(() => startWorkspaceSimulator(creation.workspace.id));
+      } catch (error) {
+        // Simulator startup is not critical for workspace creation
+        console.warn(`[createWorkspace] Failed to start simulator:`, error);
+      }
     }
 
     return creation;

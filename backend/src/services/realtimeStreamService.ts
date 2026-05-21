@@ -13,6 +13,8 @@ export function setupWorkspaceSse(request: Request, response: Response, workspac
   response.flushHeaders();
 
   let closed = false;
+  // Track active SSE connections for operational visibility
+  incrementActiveSseConnections();
   const send = (event: string, payload: unknown): void => {
     if (closed || response.destroyed) {
       return;
@@ -52,9 +54,22 @@ export function setupWorkspaceSse(request: Request, response: Response, workspac
     telemetryBus.off("telemetry", telemetryHandler);
     telemetryBus.off("seeded", seededHandler);
     response.end();
+    decrementActiveSseConnections();
   };
 
   request.on("close", cleanup);
   request.on("aborted", cleanup);
   response.on("error", cleanup);
+}
+
+let _activeSseConnections = 0;
+function incrementActiveSseConnections(): void {
+  _activeSseConnections += 1;
+}
+function decrementActiveSseConnections(): void {
+  _activeSseConnections = Math.max(0, _activeSseConnections - 1);
+}
+
+export function getActiveSseConnections(): number {
+  return _activeSseConnections;
 }
