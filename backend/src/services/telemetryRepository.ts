@@ -5,6 +5,7 @@ import type {
   AnalyticsModelRow,
   AnalyticsRecentRow,
   AnalyticsSnapshot,
+  TelemetryDimensions,
   TelemetryRecord
 } from "../types/telemetry";
 import type { RequestLogQuery, RequestLogResponse } from "../types/requests";
@@ -23,15 +24,16 @@ INSERT INTO requests (
   total_tokens,
   cost_usd,
   latency_ms,
-  error
-) VALUES (@workspace_id, @timestamp, @route, @model, @provider, @input_tokens, @output_tokens, @total_tokens, @cost_usd, @latency_ms, @error);
+  error,
+  metadata
+) VALUES (@workspace_id, @timestamp, @route, @model, @provider, @input_tokens, @output_tokens, @total_tokens, @cost_usd, @latency_ms, @error, @metadata);
 `;
 
 export function insertTelemetry(record: Omit<TelemetryRecord, "id">): TelemetryRecord {
   const db = getDatabase();
   const statement = db.prepare(insertTelemetrySql);
 
-  const result = statement.run(record);
+  const result = statement.run({ ...record, metadata: record.metadata ?? null });
 
   return {
     id: Number(result.lastInsertRowid),
@@ -44,7 +46,7 @@ export function insertTelemetryBatch(records: Array<Omit<TelemetryRecord, "id">>
   const insert = db.prepare(insertTelemetrySql);
   const transaction = db.transaction((items: Array<Omit<TelemetryRecord, "id">>) =>
     items.map((item) => {
-      const result = insert.run(item);
+      const result = insert.run({ ...item, metadata: item.metadata ?? null });
       return {
         id: Number(result.lastInsertRowid),
         ...item
@@ -70,7 +72,8 @@ export function listLatestTelemetry(workspaceId: string, limit = 100): Telemetry
       total_tokens,
       cost_usd,
       latency_ms,
-      error
+      error,
+      metadata
     FROM requests
     WHERE workspace_id = ?
     ORDER BY timestamp DESC, id DESC
@@ -84,6 +87,7 @@ export function listRequestLog(workspaceId: string, query: RequestLogQuery = {})
   const page = Math.max(1, Math.trunc(query.page ?? 1));
   const limit = Math.min(200, Math.max(1, Math.trunc(query.limit ?? 50)));
   const route = query.route && query.route !== "all" ? query.route : undefined;
+  const provider = query.provider && query.provider !== "all" ? query.provider : undefined;
   const models = (query.model ?? []).filter(Boolean);
 
   const filters: string[] = ["workspace_id = ?"];
@@ -94,6 +98,12 @@ export function listRequestLog(workspaceId: string, query: RequestLogQuery = {})
     filters.push("route = ?");
     params.push(route);
     countParams.push(route);
+  }
+
+  if (provider) {
+    filters.push("provider = ?");
+    params.push(provider);
+    countParams.push(provider);
   }
 
   if (models.length > 0) {
@@ -133,7 +143,8 @@ export function listRequestLog(workspaceId: string, query: RequestLogQuery = {})
       total_tokens,
       cost_usd,
       latency_ms,
-      error
+      error,
+      metadata
     FROM requests
     ${where}
     ${cursorClause}
@@ -234,6 +245,8 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
     ORDER BY bucket ASC;
   `;
 
+  const dimensions = listTelemetryDimensions(workspaceId);
+
   const overviewRow = db.prepare(overviewSql).get(workspaceId, today) as {
     requestsToday: number;
     spendToday: number;
@@ -265,7 +278,7 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
     cost: row.cost_usd,
-    status: row.error?.startsWith("HTTP_429") ? "429" : row.error?.startsWith("HTTP_500") ? "500" : "200"
+    status: row.error ? (row.error.startsWith("HTTP_429") ? "429" : row.error.startsWith("HTTP_500") ? "500" : "ERR") : "200"
   }));
 
   const requestsToday = overviewRow?.requestsToday ?? 0;
@@ -287,7 +300,25 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
     endpoints,
     models,
     recent,
-    timeline
+    timeline,
+    dimensions
+  };
+}
+
+export function listTelemetryDimensions(workspaceId: string): TelemetryDimensions {
+  const db = getDatabase();
+  const distinct = (column: "model" | "provider" | "route"): string[] =>
+    (db.prepare(`
+      SELECT DISTINCT ${column} AS value
+      FROM requests
+      WHERE workspace_id = ? AND ${column} IS NOT NULL AND TRIM(${column}) != ''
+      ORDER BY value COLLATE NOCASE ASC;
+    `).all(workspaceId) as Array<{ value: string }>).map((row) => row.value);
+
+  return {
+    models: distinct("model"),
+    providers: distinct("provider"),
+    routes: distinct("route")
   };
 }
 

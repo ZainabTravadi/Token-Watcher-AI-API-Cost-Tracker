@@ -1,7 +1,7 @@
 import { DEFAULT_ENDPOINT } from "./defaults.js";
 import { createIdentifyRecord, createSimulationRecord, createTrackRecord, defaultSimulationIntervalMs } from "./generator.js";
-import { getState, readSimulationState, setConfig, setIdentity, setSimulationFlags, setSimulationTimer, snapshot, isInitialized, markInitialized } from "./state.js";
-import { configureTransport, flush as flushTransport, getTransportStats, postJson } from "./transport.js";
+import { getState, readSimulationState, setConfig, setIdentity, setSimulationFlags, setSimulationTimer, snapshot, isInitialized, markInitialized, resetRuntimeState } from "./state.js";
+import { configureTransport, flush as flushTransport, getTransportStats, postJson, __resetTransportForTests } from "./transport.js";
 import { maybeUnref } from "./internal/utils.js";
 import type {
   TokenWatchIdentity,
@@ -24,6 +24,21 @@ export function init(options: TokenWatchInitOptions): ReturnType<typeof snapshot
 
   if (isInitialized()) {
     console.warn("TokenWatch.init() was called multiple times. Previous configuration will be replaced.");
+    // Perform a safe, surgical runtime reset to avoid leaking timers, queued
+    // requests, identity or ephemeral headers from the previous instance.
+    try {
+      // Reset transport internals (clears timers, drains queue, aborts inflight)
+      __resetTransportForTests();
+    } catch (e) {
+      // best-effort
+    }
+
+    try {
+      // Reset SDK runtime state (simulation timers, identity, headers)
+      resetRuntimeState();
+    } catch (e) {
+      // best-effort
+    }
   }
 
   const result = setConfig({

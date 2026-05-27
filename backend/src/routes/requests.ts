@@ -14,6 +14,7 @@ export function createRequestsRouter(): Router {
       const page = Number.parseInt(String(request.query.page ?? "1"), 10);
       const limit = Number.parseInt(String(request.query.limit ?? "50"), 10);
       const route = typeof request.query.route === "string" ? request.query.route : undefined;
+      const provider = typeof request.query.provider === "string" ? request.query.provider : undefined;
       const modelQuery = request.query.model;
       const model = Array.isArray(modelQuery)
         ? modelQuery.filter((item): item is string => typeof item === "string")
@@ -27,6 +28,7 @@ export function createRequestsRouter(): Router {
           page: Number.isFinite(page) ? page : 1,
           limit: Number.isFinite(limit) ? limit : 50,
           ...(route ? { route } : {}),
+          ...(provider ? { provider } : {}),
           ...(model.length > 0 ? { model } : {}),
           ...(cursor ? { cursor } : {})
         })

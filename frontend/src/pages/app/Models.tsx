@@ -2,11 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import Drawer from "@/components/Drawer";
 import { DataTable } from "@/components/DataTable";
-import { WarmupPlaceholder } from "@/components/WarmupPlaceholder";
 import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { useStatus } from "@/contexts/StatusContext";
 import {
   type AnalyticsModelRow,
   type TelemetryRow,
@@ -26,18 +24,6 @@ const SORT_LABELS: Record<SortKey, string> = {
   latency: "Avg latency",
 };
 
-const PROVIDER_LABELS: Record<AnalyticsModelRow["provider"], string> = {
-  OpenAI: "OpenAI",
-  Anthropic: "Anthropic",
-  Google: "Google",
-};
-
-const PROVIDER_BADGES: Record<AnalyticsModelRow["provider"], string> = {
-  OpenAI: "border-cyan-500/20 bg-cyan-500/5 text-cyan-700",
-  Anthropic: "border-violet-500/20 bg-violet-500/5 text-violet-700",
-  Google: "border-emerald-500/20 bg-emerald-500/5 text-emerald-700",
-};
-
 function getModelKey(row: Pick<AnalyticsModelRow, "model" | "provider">): ModelKey {
   return `${row.model}::${row.provider}`;
 }
@@ -47,16 +33,15 @@ function isErrorRow(row: TelemetryRow): boolean {
 }
 
 function getProviderLabel(provider: AnalyticsModelRow["provider"]): string {
-  return PROVIDER_LABELS[provider] ?? provider;
+  return provider;
 }
 
-function getProviderBadgeClass(provider: AnalyticsModelRow["provider"]): string {
-  return PROVIDER_BADGES[provider] ?? "border-hairline bg-secondary/40 text-muted-foreground";
+function getProviderBadgeClass(_provider: AnalyticsModelRow["provider"]): string {
+  return "border-hairline bg-secondary/40 text-muted-foreground";
 }
 
 export default function Models() {
   const { currentWorkspace } = useAuth();
-  const { simulatorStatus } = useStatus();
   const analytics = useAnalyticsSnapshotQuery(currentWorkspace?.id);
   const telemetry = useTelemetryRowsQuery(currentWorkspace?.id);
   const [selectedKey, setSelectedKey] = useState<ModelKey | null>(null);
@@ -65,6 +50,7 @@ export default function Models() {
   const [sortKey, setSortKey] = useState<SortKey>("cost");
 
   const rows = useMemo(() => analytics.data?.models ?? [], [analytics.data?.models]);
+  const providerOptions = useMemo(() => analytics.data?.dimensions.providers ?? [], [analytics.data?.dimensions.providers]);
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -120,6 +106,12 @@ export default function Models() {
       setSelectedKey(null);
     }
   }, [rows, selectedKey]);
+
+  useEffect(() => {
+    if (providerFilter !== "all" && !providerOptions.includes(providerFilter)) {
+      setProviderFilter("all");
+    }
+  }, [providerFilter, providerOptions]);
 
   const selectedRow = selectedKey ? rows.find((row) => getModelKey(row) === selectedKey) ?? null : null;
 
@@ -187,8 +179,6 @@ export default function Models() {
     };
   }, [modelRows, selectedRow]);
 
-  const isWarmup = simulatorStatus === "warming up" || simulatorStatus === "starting";
-
   if (analytics.isLoading || telemetry.isLoading) {
     return (
       <AppLayout title="Models" meta="loading analytics…">
@@ -239,9 +229,11 @@ export default function Models() {
                 className="h-8 rounded border border-hairline bg-background px-2 text-sm outline-none"
               >
                 <option value="all">All</option>
-                <option value="OpenAI">OpenAI</option>
-                <option value="Anthropic">Anthropic</option>
-                <option value="Google">Google</option>
+                {providerOptions.map((provider) => (
+                  <option key={provider} value={provider}>
+                    {provider}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
@@ -278,19 +270,9 @@ export default function Models() {
         </div>
 
         {!hasRows ? (
-          isWarmup ? (
-            <div className="mt-8">
-              <WarmupPlaceholder
-                title="warming up telemetry"
-                description="waiting for model traffic to arrive and stabilize"
-                bootstrappingPercent={analytics.data.overview.requestsToday > 0 ? 100 : 28}
-              />
-            </div>
-          ) : (
-            <div className="mt-8 border-t border-hairline py-8 text-center text-sm text-muted-foreground">
-              waiting for model traffic
-            </div>
-          )
+          <div className="mt-8 border-t border-hairline py-8 text-center text-sm text-muted-foreground">
+            No model telemetry has been recorded yet — install the SDK and generate a few requests to populate this view.
+          </div>
         ) : (
           <DataTable
             columns={[

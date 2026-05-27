@@ -29,8 +29,6 @@ interface StatusContextType {
   databaseStatus: string;
   databaseColor: string;
   databaseResponseTime: number;
-  simulatorStatus: string;
-  simulatorColor: string;
   telemetryCount: number;
   telemetryCountFormatted: string;
   streamStatusColor: string;
@@ -119,6 +117,8 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
     let source: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
     let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
+    let staleCheckInterval: ReturnType<typeof setInterval> | null = null;
+    let lastHeartbeatAt = Date.now();
     let isCleanedUp = false;
 
     const clearTimers = () => {
@@ -129,6 +129,10 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
         reconnectTimeout = null;
+      }
+      if (staleCheckInterval) {
+        clearInterval(staleCheckInterval);
+        staleCheckInterval = null;
       }
     };
 
@@ -179,9 +183,8 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
           }
         };
 
-        const handleUpdate = () => {
+        const handleRefresh = () => {
           if (!isCleanedUp) {
-            setLastTelemetryEventAt(Date.now());
             if (!refreshTimeout) {
               refreshTimeout = setTimeout(() => {
                 refreshTimeout = null;
@@ -201,9 +204,41 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
           }
         };
 
-        source.addEventListener("telemetry", handleUpdate);
-        source.addEventListener("seeded", handleUpdate);
-        source.addEventListener("connected", handleUpdate);
+        const handleTelemetryUpdate = () => {
+          lastHeartbeatAt = Date.now();
+          setLastTelemetryEventAt(lastHeartbeatAt);
+          handleRefresh();
+        };
+
+        const handleHeartbeat = () => {
+          lastHeartbeatAt = Date.now();
+          if (!isCleanedUp) {
+            setStreamState("live");
+          }
+        };
+
+        source.addEventListener("telemetry", handleTelemetryUpdate);
+        source.addEventListener("seeded", handleRefresh);
+        source.addEventListener("connected", handleHeartbeat);
+        source.addEventListener("ping", handleHeartbeat);
+
+        staleCheckInterval = setInterval(() => {
+          if (isCleanedUp || !source) {
+            return;
+          }
+
+          if (Date.now() - lastHeartbeatAt > 45_000) {
+            setStreamState("reconnecting");
+            closeSource();
+            clearTimers();
+            reconnectTimeout = setTimeout(() => {
+              if (!isCleanedUp) {
+                reconnectTimeout = null;
+                void verifySessionAndSetup();
+              }
+            }, 1000);
+          }
+        }, 10_000);
 
         source.onerror = async () => {
           if (!source || isCleanedUp) return;
@@ -286,15 +321,6 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
   const databaseColor = STATUS_COLORS[databaseStatus as keyof typeof STATUS_COLORS] || STATUS_COLORS.offline;
   const databaseResponseTime = health?.database.responseTime ?? 0;
 
-  const simulatorStatus = health?.simulator.status ?? "offline";
-  const simulatorColor = {
-    starting: "bg-amber-500/10 text-amber-700",
-    "warming up": "bg-amber-500/10 text-amber-700",
-    live: "bg-green-500/10 text-green-700",
-    paused: "bg-gray-500/10 text-gray-700",
-    offline: "bg-red-500/10 text-red-700"
-  }[simulatorStatus] || "bg-gray-500/10 text-gray-700";
-
   const telemetryCount = health?.telemetry.totalRows ?? 0;
   const telemetryCountFormatted = formatTelemetryCount(telemetryCount);
 
@@ -318,8 +344,6 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
     databaseStatus,
     databaseColor,
     databaseResponseTime,
-    simulatorStatus,
-    simulatorColor,
     telemetryCount,
     telemetryCountFormatted,
     streamStatusColor,

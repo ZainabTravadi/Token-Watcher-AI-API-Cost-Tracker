@@ -15,9 +15,9 @@ export default function Drawer({ open, onClose, children, title }: { open: boole
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="mt-20 w-[90%] max-w-4xl bg-background border border-hairline rounded shadow-lg z-10 p-6">
+      <div className="my-3 sm:my-8 max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-4rem)] w-[96%] max-w-4xl overflow-y-auto overflow-x-hidden bg-background border border-hairline rounded shadow-lg z-10 p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
-          <div className="font-serif text-lg">{title}</div>
+          <div className="font-serif text-base sm:text-lg pr-4 truncate">{title}</div>
           <button className="link-underline" onClick={onClose} aria-label="Close">Close</button>
         </div>
         <div>{children}</div>

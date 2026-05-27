@@ -1,8 +1,8 @@
-export type TelemetryProvider = "OpenAI" | "Anthropic" | "Google";
+export type TelemetryProvider = string;
 
-export type TelemetryModel = "gpt-4o" | "gpt-4o-mini" | "claude-sonnet" | "claude-haiku";
+export type TelemetryModel = string;
 
-export type TelemetryRoute = "/api/chat" | "/api/summarize" | "/api/search" | "/api/autocomplete" | "/api/agents";
+export type TelemetryRoute = string;
 
 export interface TelemetryRecord {
   id: number;
@@ -17,6 +17,7 @@ export interface TelemetryRecord {
   cost_usd: number;
   latency_ms: number;
   error: string | null;
+  metadata?: string | null;
 }
 
 export interface SimulatedTelemetryRecord extends Omit<TelemetryRecord, "id"> {}
@@ -48,7 +49,7 @@ export interface AnalyticsRecentRow {
   inputTokens: number;
   outputTokens: number;
   cost: number;
-  status: "200" | "429" | "500";
+  status: "200" | "429" | "500" | "ERR";
 }
 
 export interface AnalyticsOverview {
@@ -68,4 +69,11 @@ export interface AnalyticsSnapshot {
   models: AnalyticsModelRow[];
   recent: AnalyticsRecentRow[];
   timeline: Array<{ bucket: string; requests: number; cost_usd: number; latency_ms: number }>;
+  dimensions: TelemetryDimensions;
+}
+
+export interface TelemetryDimensions {
+  models: string[];
+  providers: string[];
+  routes: string[];
 }

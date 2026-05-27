@@ -52,6 +52,11 @@ function ensureSchemaUpdates(db: Database): void {
   if (!usersInfo.some((column) => column.name === "last_logout_at")) {
     db.exec("ALTER TABLE users ADD COLUMN last_logout_at INTEGER NOT NULL DEFAULT 0");
   }
+
+  const requestsInfo = db.prepare("PRAGMA table_info(requests)").all() as Array<{ name: string }>;
+  if (requestsInfo.length > 0 && !requestsInfo.some((column) => column.name === "metadata")) {
+    db.exec("ALTER TABLE requests ADD COLUMN metadata TEXT");
+  }
 }
 
 export function getDatabase(): Database {

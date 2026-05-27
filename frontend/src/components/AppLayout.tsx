@@ -31,7 +31,7 @@ export default function AppLayout({ children, title, meta }: { children: ReactNo
 
         {/* User bar */}
         <div className="border-b border-gray-200 bg-white">
-          <div className="max-w-[1320px] mx-auto px-8 h-10 flex items-center justify-end">
+          <div className="max-w-[1320px] mx-auto px-4 sm:px-6 lg:px-8 h-10 flex items-center justify-end">
             {/* User menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -52,16 +52,16 @@ export default function AppLayout({ children, title, meta }: { children: ReactNo
           </div>
         </div>
 
-      <div className="max-w-[1320px] mx-auto px-8 grid grid-cols-[180px_1fr] gap-12">
+      <div className="max-w-[1320px] mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-[180px_1fr] gap-6 lg:gap-12">
         {/* Sidebar */}
         <Sidebar />
 
         {/* Main */}
-        <main className="pt-10 pb-24 min-w-0">
-          <div className="flex items-end justify-between mb-8">
+        <main className="pt-4 lg:pt-10 pb-20 lg:pb-24 min-w-0">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-6 lg:mb-8">
             <div>
               <div className="label-mono mb-2">{pathname}</div>
-              <h1 className="font-serif text-4xl leading-none">{title}</h1>
+              <h1 className="font-serif text-3xl sm:text-4xl leading-none">{title}</h1>
             </div>
             {meta && <div className="text-xs font-mono text-muted-foreground">{meta}</div>}
           </div>

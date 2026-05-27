@@ -221,6 +221,51 @@ export default function Settings() {
     }
   };
 
+  const handleSaveName = async () => {
+    if (!currentWorkspace) return;
+
+    const validation = validateWorkspaceName(name);
+    setNameError(validation.valid ? null : validation.error || "Invalid name");
+    if (!validation.valid) return;
+
+    try {
+      setSavingMeta(true);
+      setError(null);
+      await updateWorkspaceMeta(currentWorkspace.id, { name: name.trim() });
+      setName(name.trim());
+      await syncWorkspaceState();
+      toast({ title: "Workspace renamed", description: "Workspace name updated" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to rename workspace";
+      setNameError(message);
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setSavingMeta(false);
+    }
+  };
+
+  const handleSaveBudget = async () => {
+    if (!currentWorkspace) return;
+
+    const validation = validateMonthlyBudget(budget);
+    setBudgetError(validation.valid ? null : validation.error || "Invalid budget");
+    if (!validation.valid) return;
+
+    try {
+      setSavingMeta(true);
+      setError(null);
+      await updateWorkspaceMeta(currentWorkspace.id, { monthly_budget: Number(budget) });
+      await syncWorkspaceState();
+      toast({ title: "Budget saved", description: "Monthly budget updated" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update monthly budget";
+      setBudgetError(message);
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setSavingMeta(false);
+    }
+  };
+
   const handleSaveSettings = async () => {
     if (!currentWorkspace) return;
 
@@ -329,19 +374,23 @@ export default function Settings() {
         <SettingsWorkspaceNameSection
           value={name}
           error={nameError}
+          isSaving={savingMeta}
           onChange={(value) => {
             setName(value);
             setNameError(null);
           }}
+          onSave={() => void handleSaveName()}
         />
 
         <SettingsBudgetSection
           value={budget}
           error={budgetError}
+          isSaving={savingMeta}
           onChange={(value) => {
             setBudget(value);
             setBudgetError(null);
           }}
+          onSave={() => void handleSaveBudget()}
         />
 
         <SettingsAlertsSection

@@ -38,10 +38,10 @@ export function SettingsApiKeySection({
               readOnly
               className="flex-1 font-mono text-sm"
             />
-            <Button type="button" variant="outline" size="sm" onClick={onToggleReveal}>
+            <Button type="button" variant="outline" size="sm" onClick={onToggleReveal} disabled={isRotating} title={showApiKey ? "Hide API key" : "Reveal API key"}>
               {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={onCopy} title="Copy API key to clipboard">
+            <Button type="button" variant="outline" size="sm" onClick={onCopy} disabled={isRotating} title="Copy API key to clipboard">
               <Copy className="h-4 w-4" />
             </Button>
           </div>
@@ -56,7 +56,7 @@ export function SettingsApiKeySection({
               })}
             </div>
             <p className="text-xs text-muted-foreground">
-              The secret value is hidden after generation. Rotate to issue a new key.
+              The secret is shown only when a key is created or rotated. Rotate to issue a new key.
             </p>
           </div>
         ) : (

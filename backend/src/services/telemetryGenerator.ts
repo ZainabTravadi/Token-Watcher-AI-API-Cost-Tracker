@@ -1,14 +1,15 @@
 import type {
   SimulatedTelemetryRecord,
-  TelemetryModel,
-  TelemetryProvider,
-  TelemetryRoute
 } from "../types/telemetry";
 import { clamp, gaussianish, randomFloat, randomInt, weightedPick } from "../utils/random";
 
+type SimulatedRoute = "/api/chat" | "/api/summarize" | "/api/search" | "/api/autocomplete" | "/api/agents";
+type SimulatedModel = "gpt-4o" | "gpt-4o-mini" | "claude-sonnet" | "claude-haiku";
+type SimulatedProvider = "OpenAI" | "Anthropic";
+
 type ModelProfile = {
-  model: TelemetryModel;
-  provider: TelemetryProvider;
+  model: SimulatedModel;
+  provider: SimulatedProvider;
   inputRange: [number, number];
   outputRange: [number, number];
   baseLatency: number;
@@ -16,7 +17,7 @@ type ModelProfile = {
   outputCostPerK: number;
 };
 
-const routeWeights: Array<{ value: TelemetryRoute; weight: number }> = [
+const routeWeights: Array<{ value: SimulatedRoute; weight: number }> = [
   { value: "/api/chat", weight: 38 },
   { value: "/api/summarize", weight: 14 },
   { value: "/api/search", weight: 20 },
@@ -24,7 +25,7 @@ const routeWeights: Array<{ value: TelemetryRoute; weight: number }> = [
   { value: "/api/agents", weight: 11 }
 ];
 
-const modelProfiles: Record<TelemetryModel, ModelProfile> = {
+const modelProfiles: Record<SimulatedModel, ModelProfile> = {
   "gpt-4o": {
     model: "gpt-4o",
     provider: "OpenAI",
@@ -63,7 +64,7 @@ const modelProfiles: Record<TelemetryModel, ModelProfile> = {
   }
 };
 
-const routeModelMap: Record<TelemetryRoute, Array<{ value: TelemetryModel; weight: number }>> = {
+const routeModelMap: Record<SimulatedRoute, Array<{ value: SimulatedModel; weight: number }>> = {
   "/api/chat": [
     { value: "gpt-4o", weight: 56 },
     { value: "gpt-4o-mini", weight: 28 },
@@ -154,7 +155,7 @@ export function generateHistoricalDataset(workspaceId: string, days = 7): Array<
   return events.sort((a, b) => a.timestamp - b.timestamp);
 }
 
-function routeInputMultiplier(route: TelemetryRoute): number {
+function routeInputMultiplier(route: SimulatedRoute): number {
   switch (route) {
     case "/api/chat":
       return randomFloat(0.9, 1.4);
@@ -169,7 +170,7 @@ function routeInputMultiplier(route: TelemetryRoute): number {
   }
 }
 
-function routeOutputMultiplier(route: TelemetryRoute): number {
+function routeOutputMultiplier(route: SimulatedRoute): number {
   switch (route) {
     case "/api/chat":
       return randomFloat(0.9, 1.5);
@@ -201,7 +202,7 @@ function trafficSpikeFactor(date: Date): number {
   return checkpointSpike * launchSpike * randomSpike;
 }
 
-function generateError(route: TelemetryRoute, model: TelemetryModel, volumeFactor: number): string | null {
+function generateError(route: SimulatedRoute, model: SimulatedModel, volumeFactor: number): string | null {
   const errorRoll = Math.random();
   const baseErrorRate = route === "/api/autocomplete" ? 0.012 : route === "/api/search" ? 0.018 : route === "/api/chat" ? 0.022 : route === "/api/summarize" ? 0.028 : 0.034;
   const adjustedErrorRate = baseErrorRate + Math.max(0, volumeFactor - 1.2) * 0.02;

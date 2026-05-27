@@ -93,3 +93,28 @@ export function isInitialized(): boolean {
 export function markInitialized(): void {
   state.initialized = true;
 }
+
+// Reset runtime-only state to prepare for a clean re-init. This clears
+// timers, simulation flags, identity and ephemeral headers without
+// touching build-time defaults (apiUrl/apiKey will be set by the new init).
+export function resetRuntimeState(): void {
+  if (state.simulationTimer) {
+    try {
+      clearTimeout(state.simulationTimer);
+    } catch (e) {
+      // ignore
+    }
+    state.simulationTimer = null;
+  }
+
+  state.simulationRunning = false;
+  state.simulationStopRequested = true;
+
+  // Clear identity and ephemeral headers so a subsequent `init()` does
+  // not inherit previous user metadata by accident.
+  state.identity = null;
+  state.headers = {};
+
+  // Mark as not-initialized; `init()` will markInitialized() after setup.
+  state.initialized = false;
+}

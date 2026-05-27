@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS requests (
   cost_usd REAL NOT NULL DEFAULT 0,
   latency_ms INTEGER NOT NULL DEFAULT 0,
   error TEXT,
+  metadata TEXT,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 `;

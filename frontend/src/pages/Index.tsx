@@ -3,13 +3,8 @@ import { fmtUSD, fmtNum } from "@/lib/data";
 import { PageLoadingState } from "@/components/AsyncState";
 
 const Index = () => {
-  // Show landing page with demo/placeholder data
-  const top = [
-    { route: "/api/chat", requests: 18403, cost_usd: 1230.50, avg_cost_usd: 0.067, avg_latency_ms: 1200 },
-    { route: "/api/summarize", requests: 3200, cost_usd: 412.80, avg_cost_usd: 0.129, avg_latency_ms: 2400 },
-    { route: "/api/search", requests: 2100, cost_usd: 68.50, avg_cost_usd: 0.033, avg_latency_ms: 800 },
-    { route: "/api/autocomplete", requests: 1400, cost_usd: 45.20, avg_cost_usd: 0.032, avg_latency_ms: 400 },
-  ];
+  // Landing preview intentionally avoids fake telemetry; prompts users
+  // to open the console for a live workspace preview.
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
@@ -30,20 +25,21 @@ const Index = () => {
       </header>
 
       {/* Hero */}
-      <section className="max-w-[1100px] mx-auto px-8 pt-24 pb-20 grid grid-cols-12 gap-8">
+      <section className="max-w-[1100px] mx-auto px-8 pt-20 pb-16 grid grid-cols-12 gap-8">
         <div className="col-span-12 md:col-span-8">
-          <div className="label-mono mb-6">Issue 04 · May 2026 · v0.4.1</div>
-          <h1 className="font-serif text-[64px] leading-[1.02] tracking-tight mb-8">
+          <div className="label-mono mb-4">Issue 04 · May 2026 · v0.4.1</div>
+          <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl lg:text-[56px] leading-tight tracking-tight mb-6">
             Know exactly where your<br />
             <em className="font-serif italic">AI money</em> is going.
           </h1>
-          <p className="text-lg max-w-xl text-foreground/80 leading-relaxed mb-10">
-            Track every request, every token, every dollar — across all your endpoints.
-            A small, local-first observability layer for teams shipping with LLMs.
+          <p className="text-lg max-w-xl text-foreground/80 leading-relaxed mb-6">
+            Install the SDK, wrap your client, and see telemetry stream live.
+            Track every request, every token, and every dollar across your endpoints.
           </p>
-          <div className="flex items-center gap-4">
-            <Link to="/app" className="btn-rect">Open Dashboard</Link>
-            <a href="#" className="btn-rect-ghost">View Documentation</a>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link to="/app" className="btn-rect h-11 px-5 text-sm shadow-sm">Open Console</Link>
+            <a href="#install" className="btn-rect-ghost h-11 px-4 text-sm">How it works</a>
+            <div className="w-full mt-4 text-sm text-muted-foreground font-mono">SDK-first · Realtime telemetry · Local-first persistence</div>
           </div>
         </div>
         <aside className="col-span-12 md:col-span-4 md:pl-8 md:border-l border-hairline">
@@ -72,7 +68,7 @@ const Index = () => {
           </div>
           <div className="col-span-12 md:col-span-9 grid md:grid-cols-2 gap-x-12 gap-y-10">
             {[
-              ["Real-time accounting", "Every call to OpenAI, Anthropic, Google, or your own gateway is logged with token counts and resolved cost the moment it returns."],
+              ["Real-time accounting", "Every call to your AI providers or internal gateways is logged with token counts and resolved cost the moment it returns."],
               ["No proxy required", "TokenWatch wraps your existing SDK clients. No traffic is rerouted. Your latency is your latency."],
               ["Local-first", "Records persist to a local SQLite file by default. Sync to the console when you want a team view — never before."],
               ["Endpoint resolution", "Costs aren't grouped by API key. They're grouped by your route, your user, your job — whatever you tag."],
@@ -99,50 +95,35 @@ const Index = () => {
               <div>npm install tokenwatch</div>
               <div className="text-muted-foreground mt-3"># 2. wrap your client</div>
               <div><span className="text-muted-foreground">import</span> {"{ track }"} <span className="text-muted-foreground">from</span> <span>"tokenwatch"</span></div>
-              <div><span className="text-muted-foreground">const</span> openai = track(<span className="text-muted-foreground">new</span> OpenAI(), {"{ endpoint: \"/api/chat\" }"})</div>
+              <div><span className="text-muted-foreground">await</span> TokenWatch.track(<span className="text-muted-foreground">"llm.request.completed"</span>, {"{ route, provider, model, cost_usd }"})</div>
               <div className="text-muted-foreground mt-3"># 3. that's it. open the console.</div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Live preview */}
+      {/* Console preview (no fake demo data shown) */}
       <section className="hairline">
         <div className="max-w-[1100px] mx-auto px-8 py-16 grid grid-cols-12 gap-8">
           <div className="col-span-12 md:col-span-3">
             <div className="label-mono">§ 03</div>
             <h2 className="font-serif text-2xl mt-2">From the console</h2>
-            <p className="text-sm text-muted-foreground mt-3">Spend by endpoint, last 24h. Real workspace, scrubbed.</p>
+            <p className="text-sm text-muted-foreground mt-3">Open your workspace to see live telemetry, costs, and activity.</p>
           </div>
           <div className="col-span-12 md:col-span-9">
-            <div className="border border-hairline bg-surface">
-              <div className="flex items-center justify-between px-4 h-9 border-b border-hairline">
-                <div className="label-mono">acme-prod / endpoints</div>
-                <div className="text-xs font-mono text-muted-foreground">24h · USD</div>
+            <div className="border border-hairline bg-surface p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="label-mono">console preview</div>
+                <div className="text-xs font-mono text-muted-foreground">live · scrubbed</div>
               </div>
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-hairline">
-                    <th className="label-mono text-left py-2 px-4 font-normal">Endpoint</th>
-                    <th className="label-mono text-right py-2 px-4 font-normal">Requests</th>
-                    <th className="label-mono text-right py-2 px-4 font-normal">Total cost</th>
-                    <th className="label-mono text-right py-2 px-4 font-normal">Avg / req</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {top.map((e) => (
-                    <tr key={e.route} className="border-b border-hairline/60">
-                      <td className="py-2.5 px-4 font-mono text-sm">{e.route}</td>
-                      <td className="py-2.5 px-4 text-sm num text-right">{fmtNum(e.requests)}</td>
-                      <td className="py-2.5 px-4 text-sm num text-right">{fmtUSD(e.cost_usd)}</td>
-                      <td className="py-2.5 px-4 text-sm num text-right text-muted-foreground">{fmtUSD(e.avg_cost_usd)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="px-4 py-2 text-xs font-mono text-muted-foreground flex justify-between">
-                <span>{top.length} of {top.length} rows</span>
-                <Link to="/app" className="link-underline">open full console →</Link>
+              <div className="space-y-3">
+                <div className="h-3 bg-secondary/40 rounded w-[60%]" />
+                <div className="h-3 bg-secondary/30 rounded w-[45%]" />
+                <div className="h-3 bg-secondary/20 rounded w-[80%]" />
+              </div>
+              <div className="mt-6 flex items-center gap-4">
+                <Link to="/app" className="btn-rect">Open Console</Link>
+                <a href="#install" className="btn-rect-ghost">How it works</a>
               </div>
             </div>
           </div>

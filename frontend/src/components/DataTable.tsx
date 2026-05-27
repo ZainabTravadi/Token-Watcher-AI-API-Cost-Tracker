@@ -22,6 +22,7 @@ export function DataTable<T extends object>({
 }) {
   return (
     <div className="border-t border-hairline">
+      <div className="overflow-auto">
       <table className="w-full border-collapse">
         <thead>
           <tr className="border-b border-hairline">
@@ -29,7 +30,7 @@ export function DataTable<T extends object>({
               <th
                 key={String(c.key)}
                 style={{ width: c.width }}
-                className={`label-mono py-2 px-3 font-normal ${c.align === "right" ? "text-right" : "text-left"}`}
+                className={`label-mono py-2 px-3 font-normal ${c.align === "right" ? "text-right" : "text-left"} sticky top-0 bg-background/95 backdrop-blur-sm z-10`}
               >
                 {c.label}
               </th>
@@ -51,7 +52,7 @@ export function DataTable<T extends object>({
               {columns.map((c) => (
                 <td
                   key={String(c.key)}
-                  className={`py-2.5 px-3 text-sm ${c.align === "right" ? "text-right num" : ""}`}
+                  className={`py-2 px-3 text-sm ${c.align === "right" ? "text-right num" : ""}`}
                 >
                   {c.render
                     ? c.render(row)
@@ -67,6 +68,7 @@ export function DataTable<T extends object>({
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

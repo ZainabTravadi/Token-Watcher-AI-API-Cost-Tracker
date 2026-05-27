@@ -2,9 +2,17 @@
   "name": "tokenwatch",
   "version": "0.1.0",
   "private": false,
-  "description": "Lightweight TokenWatch SDK for simulated AI telemetry and observability testing.",
+  "description": "Lightweight SDK for sending application telemetry to TokenWatch.",
   "type": "module",
   "sideEffects": false,
+  "keywords": [
+    "telemetry",
+    "observability",
+    "ai",
+    "llm",
+    "monitoring"
+  ],
+  "license": "MIT",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",
@@ -26,7 +34,8 @@
     "clean": "node -e \"const fs=require('fs'); fs.rmSync('dist', { recursive: true, force: true });\"",
     "build:esm": "tsc -p tsconfig.esm.json",
     "build:cjs": "tsc -p tsconfig.cjs.json && node -e \"const fs=require('fs'); fs.writeFileSync('dist/cjs/package.json', JSON.stringify({ type: 'commonjs' }, null, 2) + '\\n');\"",
-    "build": "npm run clean && npm run build:esm && npm run build:cjs",
+    "build": "npm run clean && npm run build:esm && npm run build:cjs && npm run postbuild",
+    "postbuild": "node ./scripts/fix-dts-extensions.cjs",
     "test": "npm run build:esm && node --test test/sdk.test.js test/phase2-validation.test.js"
   }
 }

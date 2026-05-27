@@ -14,7 +14,8 @@ export function recordRequest(workspaceId: string, input: CreateRequestRecordInp
     total_tokens: input.total_tokens ?? 0,
     cost_usd: input.cost_usd ?? 0,
     latency_ms: input.latency_ms ?? 0,
-    error: input.error ?? null
+    error: input.error ?? null,
+    metadata: input.metadata ?? null
   } as unknown as Omit<TelemetryRecord, "id">);
 }
 

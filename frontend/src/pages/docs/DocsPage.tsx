@@ -24,15 +24,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
           "The SDK posts to the configured ingest endpoint (default `/ingest`) and includes the workspace API key in `X-API-Key`.",
           "The backend verifies the key server-side and attaches the event to that workspace; payloads cannot claim another workspace."
         ],
-        code: "import * as TokenWatch from 'tokenwatch';\n\nTokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxxxxxxx', apiKey: 'tw_live_xxxxx' });\n\nawait TokenWatch.track('request.completed', { properties: { route: '/api/chat' } });\nawait TokenWatch.flush();"
-      },
-      {
-        heading: "Use the simulator",
-        body: [
-          "Local simulation (SDK `startSimulation`) produces synthetic telemetry client-side; workspace simulators (`workspaceSimulatorManager`) generate server-side traffic that flows through the same ingest API.",
-          "Server-side simulators are enabled by default in development and intentionally disabled in production unless `ENABLE_SIMULATORS=true`."
-        ],
-        code: "// Client-side simulation\nconst simulation = TokenWatch.startSimulation({ profile: 'medium' });\n\n// stop later\nsimulation.stop();\nawait TokenWatch.flush();"
+        code: "import * as TokenWatch from 'tokenwatch';\n\nTokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxxxxxxx', apiKey: process.env.TOKENWATCH_API_KEY });\n\nawait TokenWatch.track('llm.request.completed', {\n  route: '/api/chat',\n  provider: 'YourProvider',\n  model: 'your-model',\n  input_tokens: 120,\n  output_tokens: 80,\n  cost_usd: 0.0042,\n  latency_ms: 640\n});\n\nawait TokenWatch.flush();"
       }
     ]
   },
@@ -52,7 +44,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
           "Events are queued in a bounded in-memory queue and flushed in groups. 4xx responses are treated as permanent failures, while 5xx and network errors are retried with a jittered backoff. `flush()` waits for outstanding deliveries.",
           "Use `stats()` for operational visibility: queue size, in-flight requests, rejected counts, retries, and last error."
         ],
-        code: "await TokenWatch.track(\"checkout.llm_call\");\nawait TokenWatch.simulate({ profile: \"high\" });\nawait TokenWatch.flush();\n\nconsole.log(TokenWatch.stats());"
+        code: "await TokenWatch.track(\"checkout.llm_call\", {\n  route: \"/checkout\",\n  provider: \"YourProvider\",\n  model: \"your-model\",\n  input_tokens: 240,\n  output_tokens: 120,\n  cost_usd: 0.006,\n  latency_ms: 820\n});\nawait TokenWatch.flush();\n\nconsole.log(TokenWatch.stats());"
       }
     ]
   },

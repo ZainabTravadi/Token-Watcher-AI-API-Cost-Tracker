@@ -20,9 +20,9 @@ const API_BASE_URL = resolveApiBaseUrl();
 
 export { API_BASE_URL };
 
-export type TelemetryProvider = "OpenAI" | "Anthropic" | "Google";
-export type TelemetryModel = "gpt-4o" | "gpt-4o-mini" | "claude-sonnet" | "claude-haiku";
-export type TelemetryRoute = "/api/chat" | "/api/summarize" | "/api/search" | "/api/autocomplete" | "/api/agents";
+export type TelemetryProvider = string;
+export type TelemetryModel = string;
+export type TelemetryRoute = string;
 
 export type EnvironmentType = "development" | "staging" | "production";
 export type ReleaseChannel = "stable" | "beta" | "nightly";
@@ -75,12 +75,6 @@ export interface HealthResponse {
   timestamp: string;
 }
 
-export interface SimulatorStatusResponse {
-  running: boolean;
-  seededRows: number;
-  totalRows: number;
-}
-
 export interface AnalyticsOverview {
   spendToday: number;
   requestsToday: number;
@@ -119,7 +113,13 @@ export interface AnalyticsRecentRow {
   inputTokens: number;
   outputTokens: number;
   cost: number;
-  status: "200" | "429" | "500";
+  status: "200" | "429" | "500" | "ERR";
+}
+
+export interface TelemetryDimensions {
+  models: string[];
+  providers: string[];
+  routes: string[];
 }
 
 export interface AnalyticsSnapshot {
@@ -128,6 +128,7 @@ export interface AnalyticsSnapshot {
   models: AnalyticsModelRow[];
   recent: AnalyticsRecentRow[];
   timeline: Array<{ bucket: string; requests: number; cost_usd: number; latency_ms: number }>;
+  dimensions: TelemetryDimensions;
 }
 
 export interface TelemetryRow {
@@ -143,6 +144,7 @@ export interface TelemetryRow {
   cost_usd: number;
   latency_ms: number;
   error: string | null;
+  metadata?: string | null;
 }
 
 export interface RequestLogQuery {
@@ -150,6 +152,7 @@ export interface RequestLogQuery {
   limit?: number;
   route?: TelemetryRoute | "all";
   model?: TelemetryModel[];
+  provider?: TelemetryProvider | "all";
   cursor?: string;
 }
 
@@ -270,11 +273,6 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return apiFetch<HealthResponse>("/api/health");
 }
 
-export async function fetchSimulatorStatus(): Promise<SimulatorStatusResponse> {
-  const response = await apiFetch<{ data: SimulatorStatusResponse }>("/api/telemetry/status");
-  return response.data;
-}
-
 export async function fetchAnalyticsSnapshot(workspaceId?: string): Promise<AnalyticsSnapshot> {
   const url = workspaceId ? `/api/analytics/snapshot?workspaceId=${workspaceId}` : "/api/analytics/snapshot";
   const response = await apiFetch<{ data: AnalyticsSnapshot }>(url);
@@ -296,6 +294,7 @@ export async function fetchRequestLog(workspaceId?: string, query: RequestLogQue
   if (query.page) params.set("page", String(query.page));
   if (query.limit) params.set("limit", String(query.limit));
   if (query.route && query.route !== "all") params.set("route", query.route);
+  if (query.provider && query.provider !== "all") params.set("provider", query.provider);
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.model && query.model.length > 0) {
     for (const model of query.model) {
@@ -311,16 +310,6 @@ export function useHealthQuery() {
   return useQuery<HealthResponse>({
     queryKey: ["health"],
     queryFn: fetchHealth,
-    refetchInterval: 10_000,
-    staleTime: 5_000,
-    retry: 1
-  });
-}
-
-export function useSimulatorStatusQuery() {
-  return useQuery<SimulatorStatusResponse>({
-    queryKey: ["simulator-status"],
-    queryFn: fetchSimulatorStatus,
     refetchInterval: 10_000,
     staleTime: 5_000,
     retry: 1
@@ -394,7 +383,7 @@ export function useRequestLogQuery(workspaceId?: string, query: RequestLogQuery 
   const modelsKey = (query.model ?? []).slice().sort().join(",");
 
   return useQuery<RequestLogResponse>({
-    queryKey: ["request-log", workspaceId, query.page ?? 1, query.limit ?? 50, query.route ?? "all", modelsKey, query.cursor ?? ""],
+    queryKey: ["request-log", workspaceId, query.page ?? 1, query.limit ?? 50, query.route ?? "all", query.provider ?? "all", modelsKey, query.cursor ?? ""],
     queryFn: () => fetchRequestLog(workspaceId, query),
     refetchInterval: streamStatus === "offline" || streamStatus === "unauthorized" ? 5_000 : false,
     staleTime: 1_000,

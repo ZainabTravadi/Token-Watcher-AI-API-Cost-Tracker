@@ -60,13 +60,16 @@ function validateSingleRecord(payload: Record<string, unknown>): IngestTelemetry
     throw new Error("Telemetry records must be objects.");
   }
 
-  const route = normalizeText(payload.route, "/api/chat", 180);
-  const model = normalizeText(payload.model, "gpt-4o-mini", 120);
-  const provider = normalizeText(payload.provider, "OpenAI", 80);
+  const route = normalizeText(payload.route ?? payload.endpoint, "/unknown", 180);
+  const model = normalizeText(payload.model, "unknown", 120);
+  const provider = normalizeText(payload.provider, "unknown", 80);
 
   return {
     timestamp: Number.isFinite(Number(payload.timestamp)) ? Number(payload.timestamp) : Date.now(),
+    event: payload.event === undefined ? undefined : normalizeText(payload.event, "", 160),
+    projectId: payload.projectId === undefined ? undefined : normalizeText(payload.projectId, "", 160),
     route,
+    endpoint: route,
     model,
     provider,
     input_tokens: normalizeNumber(payload.input_tokens),
@@ -86,19 +89,41 @@ function validateSingleRecord(payload: Record<string, unknown>): IngestTelemetry
 }
 
 function normalizeTelemetryInput(workspaceId: string, record: IngestTelemetryInput): Omit<TelemetryRecord, "id"> {
+  const metadata = buildMetadata(record);
+
   return {
     workspace_id: workspaceId,
     timestamp: record.timestamp ?? Date.now(),
-    route: (record.route ?? "/api/chat") as TelemetryRecord["route"],
-    model: (record.model ?? "gpt-4o-mini") as TelemetryRecord["model"],
-    provider: (record.provider ?? "OpenAI") as TelemetryRecord["provider"],
+    route: record.route ?? record.endpoint ?? "/unknown",
+    model: record.model ?? "unknown",
+    provider: record.provider ?? "unknown",
     input_tokens: record.input_tokens ?? 0,
     output_tokens: record.output_tokens ?? 0,
     total_tokens: record.total_tokens ?? (record.input_tokens ?? 0) + (record.output_tokens ?? 0),
     cost_usd: record.cost_usd ?? 0,
     latency_ms: record.latency_ms ?? 0,
-    error: record.error ?? null
+    error: record.error ?? null,
+    metadata
   };
+}
+
+function buildMetadata(record: IngestTelemetryInput): string | null {
+  const metadata: Record<string, unknown> = {};
+
+  if (record.event) {
+    metadata.event = record.event;
+  }
+  if (record.projectId) {
+    metadata.projectId = record.projectId;
+  }
+  if (record.identity) {
+    metadata.identity = record.identity;
+  }
+  if (record.properties) {
+    metadata.properties = record.properties;
+  }
+
+  return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
 }
 
 function normalizeNumber(value: unknown): number {

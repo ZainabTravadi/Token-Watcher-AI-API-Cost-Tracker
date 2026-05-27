@@ -7,23 +7,39 @@ const SIMULATION_INTERVAL_PRESETS = {
   high: 500
 } as const;
 
-export function createTrackRecord(name: string, workspaceId: string, identity: TokenWatchIdentity | null, options: { timestamp?: number; properties?: Record<string, unknown> } = {}): TokenWatchTelemetryRecord {
+export function createTrackRecord(name: string, workspaceId: string, identity: TokenWatchIdentity | null, options: {
+  timestamp?: number;
+  route?: string;
+  endpoint?: string;
+  provider?: string;
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  cost_usd?: number;
+  latency_ms?: number;
+  error?: string | null;
+  properties?: Record<string, unknown>;
+} = {}): TokenWatchTelemetryRecord {
   const timestamp = options.timestamp ?? Date.now();
+  const properties = options.properties ?? {};
+  const inputTokens = normalizeNumber(options.input_tokens ?? properties.input_tokens);
+  const outputTokens = normalizeNumber(options.output_tokens ?? properties.output_tokens);
 
   return {
     id: createId(),
     workspace_id: workspaceId,
     timestamp,
     event: name,
-    route: `/events/${slugify(name)}`,
-    provider: "TokenWatch",
-    model: "custom-event",
-    input_tokens: 0,
-    output_tokens: 0,
-    total_tokens: 0,
-    cost_usd: 0,
-    latency_ms: 0,
-    error: null,
+    route: normalizeString(options.route ?? options.endpoint ?? properties.route ?? properties.endpoint, `/events/${slugify(name)}`),
+    provider: normalizeString(options.provider ?? properties.provider, "custom"),
+    model: normalizeString(options.model ?? properties.model, name),
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: normalizeNumber(options.total_tokens ?? properties.total_tokens, inputTokens + outputTokens),
+    cost_usd: normalizeNumber(options.cost_usd ?? properties.cost_usd),
+    latency_ms: normalizeNumber(options.latency_ms ?? properties.latency_ms),
+    error: typeof options.error === "string" || options.error === null ? options.error : typeof properties.error === "string" ? properties.error : null,
     identity: identity ? { ...identity, traits: identity.traits ? { ...identity.traits } : undefined } : undefined,
     properties: options.properties ? { ...options.properties } : undefined
   };
@@ -184,4 +200,14 @@ function slugify(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "event";
+}
+
+function normalizeString(value: unknown, fallback: string): string {
+  const text = String(value ?? fallback).trim();
+  return text || fallback;
+}
+
+function normalizeNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }

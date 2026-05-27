@@ -10,12 +10,15 @@ import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import Signup from "./pages/Signup.tsx";
 import NotFound from "./pages/NotFound.tsx";
-import Overview from "./pages/app/Overview.tsx";
-import Endpoints from "./pages/app/Endpoints.tsx";
-import Models from "./pages/app/Models.tsx";
-import Requests from "./pages/app/Requests.tsx";
-import Settings from "./pages/app/Settings.tsx";
-import DocsPage from "./pages/docs/DocsPage.tsx";
+import React, { Suspense } from "react";
+import { PageLoadingState } from "./components/AsyncState";
+
+const Overview = React.lazy(() => import("./pages/app/Overview.tsx"));
+const Endpoints = React.lazy(() => import("./pages/app/Endpoints.tsx"));
+const Models = React.lazy(() => import("./pages/app/Models.tsx"));
+const Requests = React.lazy(() => import("./pages/app/Requests.tsx"));
+const Settings = React.lazy(() => import("./pages/app/Settings.tsx"));
+const DocsPage = React.lazy(() => import("./pages/docs/DocsPage.tsx"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,7 +44,9 @@ const router = createBrowserRouter(
       path: "/app",
       element: (
         <ProtectedRoute>
-          <Overview />
+          <Suspense fallback={<PageLoadingState rows={5} />}>
+            <Overview />
+          </Suspense>
         </ProtectedRoute>
       ),
     },
@@ -49,7 +54,9 @@ const router = createBrowserRouter(
       path: "/app/endpoints",
       element: (
         <ProtectedRoute>
-          <Endpoints />
+          <Suspense fallback={<PageLoadingState rows={4} />}>
+            <Endpoints />
+          </Suspense>
         </ProtectedRoute>
       ),
     },
@@ -57,7 +64,9 @@ const router = createBrowserRouter(
       path: "/app/models",
       element: (
         <ProtectedRoute>
-          <Models />
+          <Suspense fallback={<PageLoadingState rows={4} />}>
+            <Models />
+          </Suspense>
         </ProtectedRoute>
       ),
     },
@@ -65,7 +74,9 @@ const router = createBrowserRouter(
       path: "/app/requests",
       element: (
         <ProtectedRoute>
-          <Requests />
+          <Suspense fallback={<PageLoadingState rows={6} />}>
+            <Requests />
+          </Suspense>
         </ProtectedRoute>
       ),
     },
@@ -73,7 +84,9 @@ const router = createBrowserRouter(
       path: "/app/settings",
       element: (
         <ProtectedRoute>
-          <Settings />
+          <Suspense fallback={<PageLoadingState rows={3} />}>
+            <Settings />
+          </Suspense>
         </ProtectedRoute>
       ),
     },
@@ -81,7 +94,9 @@ const router = createBrowserRouter(
       path: "/docs/getting-started",
       element: (
         <ProtectedRoute>
-          <DocsPage slug="getting-started" />
+          <Suspense fallback={<PageLoadingState rows={2} />}>
+            <DocsPage slug="getting-started" />
+          </Suspense>
         </ProtectedRoute>
       ),
     },
@@ -89,7 +104,9 @@ const router = createBrowserRouter(
       path: "/docs/sdk-reference",
       element: (
         <ProtectedRoute>
-          <DocsPage slug="sdk-reference" />
+          <Suspense fallback={<PageLoadingState rows={2} />}>
+            <DocsPage slug="sdk-reference" />
+          </Suspense>
         </ProtectedRoute>
       ),
     },
@@ -97,7 +114,9 @@ const router = createBrowserRouter(
       path: "/docs/webhooks",
       element: (
         <ProtectedRoute>
-          <DocsPage slug="webhooks" />
+          <Suspense fallback={<PageLoadingState rows={2} />}>
+            <DocsPage slug="webhooks" />
+          </Suspense>
         </ProtectedRoute>
       ),
     },

@@ -1,16 +1,6 @@
 import { useStatus } from "@/contexts/StatusContext";
-import { useWorkspaceWarmup } from "@/hooks/use-workspace-warmup";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Code2,
-  Database,
-  Radio,
-  Activity,
-  Zap,
-  Signal,
-  AlertCircle,
-  Zap as Live
-} from "lucide-react";
+import { Code2, Database, Activity, Zap, Signal, AlertCircle } from "lucide-react";
 
 const ICON_SIZE = "w-3.5 h-3.5";
 
@@ -67,9 +57,9 @@ function DatabaseStatus() {
 
   const statusIcon = {
     connected: <Signal className={`${ICON_SIZE} text-green-600`} />,
-    reconnecting: <AlertCircle className={`${ICON_SIZE} text-amber-600 animate-pulse`} />,
+    reconnecting: <AlertCircle className={`${ICON_SIZE} text-amber-600`} />,
     offline: <Database className={`${ICON_SIZE} text-red-600`} />,
-    degraded: <AlertCircle className={`${ICON_SIZE} text-orange-600 animate-pulse`} />
+    degraded: <AlertCircle className={`${ICON_SIZE} text-orange-600`} />
   }[databaseStatus];
 
   return (
@@ -81,48 +71,12 @@ function DatabaseStatus() {
   );
 }
 
-// Simulator Status Component
-function SimulatorStatus() {
-  const { simulatorStatus, simulatorColor, isHealthLoading } = useStatus();
-
-  if (isHealthLoading) {
-    return <Skeleton className="h-5 w-28" />;
-  }
-
-  const statusIcon = {
-    starting: <Activity className={`${ICON_SIZE} animate-pulse`} />,
-    "warming up": <Zap className={`${ICON_SIZE} animate-pulse`} />,
-    live: <Live className={`${ICON_SIZE} text-green-600`} />,
-    paused: <Radio className={`${ICON_SIZE} text-gray-600`} />,
-    offline: <AlertCircle className={`${ICON_SIZE} text-red-600`} />
-  }[simulatorStatus];
-
-  return (
-    <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${simulatorColor}`}>
-      {statusIcon}
-      {simulatorStatus}
-    </div>
-  );
-}
-
 // Telemetry Count Component
 function TelemetryCount() {
   const { telemetryCountFormatted, telemetryCount, isHealthLoading } = useStatus();
-  const { isWarmingUp, recordsGenerated, bootstrappingPercent } = useWorkspaceWarmup();
 
   if (isHealthLoading) {
     return <Skeleton className="h-5 w-24" />;
-  }
-
-  if (isWarmingUp) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs font-mono text-amber-600">
-        <Activity className={`${ICON_SIZE} animate-pulse`} />
-        <span title={`Bootstrapping... ${recordsGenerated} records seeded`}>
-          bootstrapping {Math.round(bootstrappingPercent)}%
-        </span>
-      </div>
-    );
   }
 
   return (
@@ -144,14 +98,14 @@ function StreamStatus() {
   }
 
   const statusIcon = {
-    connecting: <Zap className={`${ICON_SIZE} animate-pulse`} />,
+    connecting: <Zap className={`${ICON_SIZE}`} />,
     live: (
       <span className="relative flex items-center justify-center">
-        <span className="absolute w-2 h-2 bg-green-600 rounded-full animate-pulse" />
+        <span className="absolute w-2 h-2 bg-green-600 rounded-full opacity-40 animate-pulse" />
         <Signal className={`${ICON_SIZE} text-green-600`} />
       </span>
     ),
-    reconnecting: <AlertCircle className={`${ICON_SIZE} animate-pulse text-amber-600`} />,
+    reconnecting: <AlertCircle className={`${ICON_SIZE} text-amber-600`} />,
     offline: <Zap className={`${ICON_SIZE} text-red-600`} />
   }[streamStatus];
 
@@ -169,9 +123,9 @@ export function GlobalStatusHeader() {
 
   return (
     <header className="border-b border-gray-200 bg-white">
-      <div className="max-w-[1320px] mx-auto px-8 py-3">
+      <div className="max-w-[1320px] mx-auto px-4 sm:px-6 lg:px-8 py-2.5">
         {/* Primary Row: Branding and Version */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-3">
             <span className="font-serif text-lg font-medium">TokenWatch</span>
             <span className="w-px h-4 bg-gray-300" />
@@ -185,12 +139,10 @@ export function GlobalStatusHeader() {
         </div>
 
         {/* Secondary Row: Status Indicators */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <EnvironmentBadge />
           <span className="w-1 h-1 bg-gray-300 rounded-full" />
           <DatabaseStatus />
-          <span className="w-1 h-1 bg-gray-300 rounded-full" />
-          <SimulatorStatus />
           <span className="w-1 h-1 bg-gray-300 rounded-full" />
           <TelemetryCount />
           <span className="w-1 h-1 bg-gray-300 rounded-full" />

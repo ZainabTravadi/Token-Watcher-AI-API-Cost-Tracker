@@ -20,6 +20,16 @@ export interface TokenWatchIdentity {
 
 export interface TokenWatchTrackOptions {
   timestamp?: number;
+  route?: string;
+  endpoint?: string;
+  provider?: string;
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  cost_usd?: number;
+  latency_ms?: number;
+  error?: string | null;
   properties?: Record<string, unknown>;
 }
 

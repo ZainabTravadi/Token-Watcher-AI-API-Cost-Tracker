@@ -2,17 +2,20 @@ import { useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { Stat } from "@/components/Stat";
 import { DataTable } from "@/components/DataTable";
+import { RequestDetailDrawer } from "@/components/RequestDetailDrawer";
+import { SdkOnboarding } from "@/components/SdkOnboarding";
 import { fmtUSD, fmtNum, fmtPercent, fmtRelativeTime, fmtCompactNum } from "@/lib/data";
 import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
-import { useAnalyticsSnapshotQuery } from "@/lib/api";
+import { type TelemetryRow, useAnalyticsSnapshotQuery, useTelemetryRowsQuery } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStatus } from "@/contexts/StatusContext";
-import { WarmupPlaceholder } from "@/components/WarmupPlaceholder";
 
 export default function Overview() {
   const { currentWorkspace } = useAuth();
-  const { simulatorStatus, streamStatus, lastTelemetryEventAt } = useStatus();
+  const { streamStatus, lastTelemetryEventAt } = useStatus();
   const analytics = useAnalyticsSnapshotQuery(currentWorkspace?.id);
+  const telemetry = useTelemetryRowsQuery(currentWorkspace?.id, 25);
+  const [selectedRequest, setSelectedRequest] = useState<TelemetryRow | null>(null);
   const [clockTick, setClockTick] = useState(0);
 
   useEffect(() => {
@@ -22,15 +25,13 @@ export default function Overview() {
     return () => clearInterval(timer);
   }, []);
 
-  // Show warmup state
-  const isWarmingUp = simulatorStatus === "warming up" || simulatorStatus === "starting";
   const hasData = analytics.data && analytics.data.overview.requestsToday > 0;
   const lastUpdatedAt = Math.max(analytics.dataUpdatedAt ?? 0, lastTelemetryEventAt ?? 0);
   const relativeTime = fmtRelativeTime(lastUpdatedAt || Date.now());
 
   if (analytics.isLoading && !hasData) {
     return (
-      <AppLayout title="Overview" meta={isWarmingUp ? "warming up…" : "loading analytics…"}>
+      <AppLayout title="Overview" meta="loading analytics...">
         <PageLoadingState rows={6} />
       </AppLayout>
     );
@@ -49,10 +50,12 @@ export default function Overview() {
 
   const topEndpoints = [...analytics.data.endpoints].slice(0, 5);
   const topModels = [...analytics.data.models].slice(0, 5);
-  const recent = analytics.data.recent.slice(0, 8).filter((row, index, rows) => {
-    const key = `${row.ts}|${row.endpoint}|${row.model}|${row.cost}|${row.status}`;
-    return rows.findIndex((candidate) => `${candidate.ts}|${candidate.endpoint}|${candidate.model}|${candidate.cost}|${candidate.status}` === key) === index;
-  });
+  const recentRows = (telemetry.data ?? []).slice(0, 8);
+  const hasWorkspaceTelemetry =
+    analytics.data.dimensions.models.length > 0 ||
+    analytics.data.dimensions.providers.length > 0 ||
+    analytics.data.dimensions.routes.length > 0 ||
+    recentRows.length > 0;
   const maxEndpointCost = Math.max(...topEndpoints.map((e) => e.cost_usd), 1);
   const overview = analytics.data.overview;
   const timelineCosts = analytics.data.timeline.map((bucket) => bucket.cost_usd);
@@ -63,22 +66,26 @@ export default function Overview() {
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
   const projectedMonthlySpend = Math.max(overview.spendToday * daysInMonth, overview.spendToday);
   const requestsPerHour = analytics.data.timeline.length > 0 ? analytics.data.timeline[analytics.data.timeline.length - 1].requests : overview.requestsToday / 24;
+  const previousHour = analytics.data.timeline.length > 1 ? analytics.data.timeline[analytics.data.timeline.length - 2].requests : 0;
+  const requestTrend = requestsPerHour > previousHour ? "up" : requestsPerHour < previousHour ? "down" : "steady";
   const failureCount = Math.max(0, Math.round(overview.requestsToday * overview.errorRate));
   const errorsNetwork = overview.errorsNetwork ?? Math.max(0, failureCount - overview.errors429 - overview.errors500);
   const errorSub = `${fmtNum(failureCount)} failures · 429 ${fmtNum(overview.errors429)} · 500 ${fmtNum(overview.errors500)} · network ${fmtNum(errorsNetwork)}`;
-  const metaLabel = streamStatus === "offline" ? `updated ${relativeTime} · offline` : streamStatus === "reconnecting" ? `updated ${relativeTime} · reconnecting` : `updated ${relativeTime}`;
+  const metaLabel = streamStatus === "offline" ? `updated ${relativeTime} | offline` : streamStatus === "reconnecting" ? `updated ${relativeTime} | reconnecting` : `updated ${relativeTime} | ${streamStatus}`;
 
   return (
+    <>
     <AppLayout title="Overview" meta={metaLabel}>
-      {isWarmingUp && (
-        <div className="mb-8">
-          <WarmupPlaceholder
-            title="warming up telemetry"
-            description="bootstrapping analytics · waiting for first requests"
-            bootstrappingPercent={analytics.data?.overview.requestsToday ? 100 : 24}
-          />
+      {!hasWorkspaceTelemetry && currentWorkspace && (
+        <div className="mb-10">
+          <SdkOnboarding workspace={currentWorkspace} />
         </div>
       )}
+
+      <div className="mb-8 flex flex-col gap-2 border-y border-hairline py-3 text-xs font-mono text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <span>stream {streamStatus}</span>
+        <span>{lastTelemetryEventAt ? `last telemetry ${fmtRelativeTime(lastTelemetryEventAt + clockTick * 0)}` : "waiting for first telemetry event"}</span>
+      </div>
 
       {/* Top stats */}
       <div className="grid grid-cols-1 gap-8 hairline pb-8 sm:grid-cols-2 xl:grid-cols-5">
@@ -91,7 +98,7 @@ export default function Overview() {
         <Stat 
           label="Requests today" 
           value={fmtCompactNum(overview.requestsToday)} 
-          sub={`${fmtCompactNum(requestsPerHour)} / hr velocity`} 
+          sub={`${fmtCompactNum(requestsPerHour)} / hr velocity | ${requestTrend}`} 
         />
         <Stat 
           label="Avg cost / request" 
@@ -120,22 +127,22 @@ export default function Overview() {
         <div className="border-t border-hairline">
           {topEndpoints.length > 0 ? (
             topEndpoints.map((e) => (
-              <div key={e.route} className="grid grid-cols-12 gap-4 items-center py-2.5 border-b border-hairline/60">
-                <div className="col-span-3 font-mono text-sm">{e.route}</div>
+              <div key={e.route} className="grid grid-cols-12 gap-4 items-center py-2 border-b border-hairline/60">
+                <div className="col-span-3 font-mono text-sm truncate">{e.route}</div>
                 <div className="col-span-5">
-                  <div className="h-[6px] bg-secondary relative overflow-hidden">
-                    <div 
-                      className="absolute inset-y-0 left-0 bg-foreground transition-all duration-300" 
-                      style={{ width: `${(e.cost_usd / maxEndpointCost) * 100}%` }} 
+                  <div className="h-2.5 bg-secondary/30 relative overflow-hidden rounded">
+                    <div
+                      className="absolute inset-y-0 left-0 bg-gradient-to-r from-foreground/90 to-foreground/60 transition-all duration-300 rounded"
+                      style={{ width: `${(e.cost_usd / maxEndpointCost) * 100}%`, minWidth: `${Math.min(6, (e.cost_usd / maxEndpointCost) * 100)}%` }}
                     />
                   </div>
                 </div>
                 <div className="col-span-2 text-right text-sm num text-muted-foreground">{fmtCompactNum(e.requests)} req</div>
-                <div className="col-span-2 text-right text-sm num">{fmtUSD(e.cost_usd)}</div>
+                <div className="col-span-2 text-right text-sm num font-mono">{fmtUSD(e.cost_usd)}</div>
               </div>
             ))
           ) : (
-            <div className="py-6 text-xs text-muted-foreground text-center">{isWarmingUp ? "warming up telemetry" : "no data yet"}</div>
+            <div className="py-6 text-xs text-muted-foreground text-center">No endpoint telemetry yet — install the SDK or check your stream connection.</div>
           )}
         </div>
       </section>
@@ -160,7 +167,7 @@ export default function Overview() {
               getRowKey={(r) => `${r.model}-${r.provider}`}
             />
           ) : (
-            <div className="py-6 text-xs text-muted-foreground text-center border-t border-hairline">{isWarmingUp ? "bootstrapping analytics" : "no data yet"}</div>
+            <div className="py-6 text-xs text-muted-foreground text-center border-t border-hairline">No model telemetry yet — waiting for live telemetry from your workspace.</div>
           )}
         </div>
         <div className="col-span-5">
@@ -168,32 +175,36 @@ export default function Overview() {
             <h2 className="font-serif text-xl">Recent activity</h2>
             <div className="label-mono">live · last 8</div>
           </div>
-          {recent.length > 0 ? (
+          {recentRows.length > 0 ? (
             <ul className="border-t border-hairline">
-              {recent.map((l) => {
-                const traceId = `${l.ts}|${l.endpoint}|${l.model}|${l.cost}|${l.status}`;
-
+              {recentRows.map((row) => {
+                const statusOk = !row.error;
                 return (
-                  <li key={traceId} className="py-2 border-b border-hairline/60 grid grid-cols-12 gap-2 text-xs transition-colors duration-200 hover:bg-secondary/40" data-trace-id={traceId} title="click to trace coming soon">
-                    <span className="col-span-4 font-mono text-muted-foreground" title={l.ts}>{fmtRelativeTime(l.ts)}</span>
-                    <span className="col-span-4 font-mono truncate">{l.endpoint}</span>
-                    <span className="col-span-2 font-mono text-muted-foreground truncate">{l.model}/{l.provider}</span>
-                    <span className={`col-span-2 text-right num ${l.status === "200" ? "" : "text-amber-600"}`}>
-                      {fmtUSD(l.cost)}
+                  <li key={row.id} onClick={() => setSelectedRequest(row)} className="py-2 border-b border-hairline/60 grid grid-cols-12 gap-2 text-xs transition hover:bg-secondary/40 hover:shadow-sm cursor-pointer">
+                    <span className="col-span-1 flex items-center justify-start">
+                      <span className={`w-2 h-2 rounded-full ${statusOk ? "bg-green-500" : "bg-amber-600"} mr-2`} />
+                    </span>
+                    <span className="col-span-3 font-mono text-muted-foreground truncate" title={new Date(row.timestamp).toISOString()}>{fmtRelativeTime(row.timestamp)}</span>
+                    <span className="col-span-4 font-mono truncate">{row.route}</span>
+                    <span className="col-span-2 font-mono text-muted-foreground truncate">{row.model}/{row.provider}</span>
+                    <span className={`col-span-2 text-right num ${row.error ? "text-amber-600" : ""}`}>
+                      {fmtUSD(row.cost_usd)}
                     </span>
                     <span className="col-span-12 -mt-1 flex items-center justify-between text-[10px] font-mono text-muted-foreground">
-                      <span>{l.status}</span>
-                      <span>{fmtCompactNum(l.inputTokens + l.outputTokens)} tok</span>
+                      <span>{row.error ? "ERR" : "200"}</span>
+                      <span>{fmtCompactNum(row.total_tokens)} tok</span>
                     </span>
                   </li>
                 );
               })}
             </ul>
           ) : (
-            <div className="py-6 text-xs text-muted-foreground text-center border-t border-hairline">{isWarmingUp ? "waiting for first requests" : "no activity yet"}</div>
+            <div className="py-6 text-xs text-muted-foreground text-center border-t border-hairline">No recent telemetry yet — open the console and trigger requests to see live activity.</div>
           )}
         </div>
       </section>
     </AppLayout>
+    <RequestDetailDrawer open={Boolean(selectedRequest)} request={selectedRequest} onClose={() => setSelectedRequest(null)} />
+    </>
   );
 }

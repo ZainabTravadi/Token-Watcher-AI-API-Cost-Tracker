@@ -11,6 +11,7 @@ export interface RequestRecord {
   cost_usd: number;
   latency_ms: number;
   error: string | null;
+  metadata?: string | null;
 }
 
 export interface CreateRequestRecordInput {
@@ -24,6 +25,7 @@ export interface CreateRequestRecordInput {
   cost_usd?: number;
   latency_ms?: number;
   error?: string | null;
+  metadata?: string | null;
 }
 
 export interface RequestLogQuery {
@@ -32,6 +34,7 @@ export interface RequestLogQuery {
   cursor?: string;
   route?: string;
   model?: string[];
+  provider?: string;
 }
 
 export interface RequestLogResponse {
