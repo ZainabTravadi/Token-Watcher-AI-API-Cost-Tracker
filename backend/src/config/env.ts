@@ -51,13 +51,6 @@ export function getConfig(): AppConfig {
       "JWT_SECRET must be set to a strong secret in production. Set process.env.JWT_SECRET to a secure, random string with at least 32 characters."
     );
   }
-  if (nodeEnv === "production" && process.env.ENABLE_SIMULATORS !== undefined && parseBoolean(process.env.ENABLE_SIMULATORS)) {
-    // Warn operators if simulators are explicitly enabled in production
-    // This is intentionally a console.warn not an error to avoid preventing startup when operator explicitly overrides.
-    // Keep message concise and actionable.
-    // eslint-disable-next-line no-console
-    console.warn("[startup] WARNING: ENABLE_SIMULATORS is true in production — simulators will run. Ensure this is intentional.");
-  }
   
   return {
     port: Number.parseInt(process.env.PORT ?? "3001", 10),
