@@ -60,11 +60,14 @@
  - Realtime SSE updates and cache invalidation for low-latency dashboards.
  - Opt-in retention and backup scripts for operational maintenance.
 
- ## Files and where to look
+## 📁 Important directories
 
- - Backend: `backend/src/routes`, `backend/src/services`, `backend/src/db`
- - SDK: `sdk/src` (`client.ts`, `transport.ts`, `state.ts`)
- - Frontend docs pages: `frontend/src/pages/docs/DocsPage.tsx`
+- [`backend/src/routes`](./backend/src/routes) — API routes and ingestion endpoints.
+- [`backend/src/services`](./backend/src/services) — analytics, realtime streaming, ingestion, and workspace logic.
+- [`backend/src/db`](./backend/src/db) — SQLite setup, schema, and migrations.
+- [`sdk/src`](./sdk/src) — SDK client, transport, batching, and runtime state.
+- [`frontend/src/pages`](./frontend/src/pages) — dashboard pages and analytics views.
+- [`frontend/src/components`](./frontend/src/components) — reusable UI and realtime dashboard components.
 
  ## Operations & maintenance (short)
 
