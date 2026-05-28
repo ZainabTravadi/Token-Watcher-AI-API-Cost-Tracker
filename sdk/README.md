@@ -1,86 +1,88 @@
 # TokenWatch SDK
 
-Send application telemetry to TokenWatch with a small dependency-free TypeScript SDK.
+Small, dependency-free TypeScript SDK to send telemetry to a TokenWatch backend.
 
-## Install
+Install
 
 ```bash
 npm install tokenwatch
 ```
 
-## Quick Start
+Quick start
 
 ```ts
-import * as TokenWatch from "tokenwatch";
+import * as TokenWatch from 'tokenwatch';
 
 TokenWatch.init({
-  apiUrl: "https://your-tokenwatch-api.example.com",
-  workspaceId: "ws_xxxxxxxx",
+  apiUrl: 'http://localhost:3001',
+  workspaceId: 'ws_xxxxxxxx',
   apiKey: process.env.TOKENWATCH_API_KEY!
 });
 
-await TokenWatch.track("llm.request.completed", {
-  route: "/api/chat",
-  provider: "YourProvider",
-  model: "your-model",
+await TokenWatch.track('llm.request.completed', {
+  route: '/api/chat',
+  provider: 'openai',
+  model: 'gpt-4o',
   input_tokens: 120,
   output_tokens: 80,
   cost_usd: 0.0042,
-  latency_ms: 640,
-  properties: {
-    requestId: "req_123"
-  }
+  latency_ms: 640
 });
 
 await TokenWatch.flush();
 ```
 
-The dashboard derives models, providers, endpoints, filters, charts, and recent activity from the telemetry rows you send.
+Core concepts
 
-## API
+- Bounded in-memory queue: prevents unbounded memory growth.
+- Batching: `batchSize` + `flushInterval` reduce requests to the ingest API.
+- Retry policy: network & 5xx errors are retried with jittered backoff; 4xx errors are treated as permanent.
 
-- `init(options)` configures the SDK.
-- `track(name, options)` sends one telemetry event.
-- `identify(id, traits)` stores identity context and emits an identify event.
-- `flush()` immediately flushes queued telemetry.
-- `stats()` returns queue, retry, flush, and rejection counters.
-- `setEndpoint(endpoint)` changes the ingestion endpoint. The default is `/ingest`.
+API reference (essentials)
 
-Simulation helpers are available for local testing:
+- `init(options)` — required: `apiUrl`, `workspaceId`, `apiKey`. Optional: `batchSize`, `flushInterval`, `maxQueueSize`, `retryAttempts`.
+- `track(eventName, payload)` — enqueue a telemetry record.
+- `identify(id, traits)` — attach identity context for subsequent events.
+- `flush()` — force sending queued events and wait for completion (call at shutdown).
+- `stats()` — returns runtime counters (queue size, rejected, in-flight, lastError).
 
-- `simulate(options)`
-- `startSimulation(options)`
-- `stopSimulation()`
+Examples
 
-## Track Options
+- Node (server-side):
 
-```ts
-await TokenWatch.track("llm.request.completed", {
-  route: "/v1/agents",
-  provider: "YourProvider",
-  model: "your-model",
-  input_tokens: 1200,
-  output_tokens: 450,
-  total_tokens: 1650,
-  cost_usd: 0.032,
-  latency_ms: 910,
-  error: null,
-  properties: {
-    requestId: "req_123",
-    tenant: "acme"
-  }
+```js
+import TokenWatch from 'tokenwatch';
+
+TokenWatch.init({ apiUrl: 'https://tokenwatch.example', workspaceId: 'ws_x', apiKey: process.env.TOKENWATCH_API_KEY });
+await TokenWatch.track('request.completed', { route: '/api/chat', provider: 'openai', model: 'gpt-4o' });
+await TokenWatch.flush();
+```
+
+- Express middleware pattern (server):
+
+```js
+// inside your request handler
+await TokenWatch.track('request.completed', {
+  route: req.path,
+  provider: 'openai',
+  model: 'gpt-4o',
+  latency_ms: duration
 });
 ```
 
-All string dimensions are open-ended. TokenWatch does not require a predefined provider, model, or route list.
+Recommendations
 
-## Production Notes
+- Keep `workspaceId` and `apiKey` server-side; never embed production API keys in browser JS.
+- Call `await TokenWatch.flush()` on process shutdown to avoid lost events.
+- Monitor `stats().rejected` and tune `maxQueueSize`/`batchSize` for high-throughput services.
 
-- Keep `TOKENWATCH_API_KEY` server-side. Do not expose workspace API keys to browsers.
-- Call `await TokenWatch.flush()` during graceful shutdown.
-- Monitor `TokenWatch.stats().rejected` for queue pressure.
-- Tune `batchSize`, `flushInterval`, `maxQueueSize`, and `retryAttempts` only if your traffic pattern needs it.
+Common mistakes
 
-## Transport Behavior
+- Sending workspace API keys to browsers (do not). Use a server-side proxy if frontend-originated events are required.
+- Expecting immediate guarantee: SDK batches and retries; small delays are normal.
 
-The SDK uses an in-memory bounded queue, batches compatible events, retries transient network and 5xx failures, and treats 4xx responses as permanent configuration/authentication errors.
+How telemetry appears in the dashboard
+
+- Each row becomes a request record (route, model, provider, tokens, cost, latency, error).
+- The dashboard aggregates these rows into endpoints, models, timeline, and recent activity and receives live rows via SSE.
+

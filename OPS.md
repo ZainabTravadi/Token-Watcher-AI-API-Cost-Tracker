@@ -1,22 +1,27 @@
-# Operational Notes
+ # Operational notes
 
-Practical guidance for running TokenWatch in a single-node beta environment.
+ Short operational checklist and troubleshooting tips.
 
-## Health checks
-- `GET /api/health` returns DB connectivity, `dbFiles` (`fileSizeBytes`, `walSizeBytes`) and `operational` counters (`activeSseConnections`, `activeSimulators`). Use these in monitoring.
+ ## Health & monitoring
 
-## Backups
-- Use `node dist/scripts/backup.js` from `backend` to produce a consistent SQLite snapshot (saved to `backend/data/backups` by default). Copy backups to durable storage.
+ - Health endpoint: `GET /api/health` — inspect `dbFiles.fileSizeBytes`, `dbFiles.walSizeBytes`, and `operational` counters (`activeSseConnections`, `activeSimulators`).
+ - Export these metrics to your monitoring system for alerting on WAL growth or connection spikes.
 
-## Retention
-- Use `dist/scripts/retention.js` with `TELEMETRY_RETENTION_DAYS` to dry-run deletions. Add `TELEMETRY_RETENTION_APPLY=true` to apply deletions.
-- Retention runs are batched and yield to the event loop between batches to avoid long locks.
+ ## Backups & retention
 
-## Simulator behavior
-- Workspace simulators (`workspaceSimulatorManager`) seed an initial batch and then generate periodic ingest calls (2–5s random interval). They create or rotate API keys as needed.
-- Global `simulatorService` currently seeds demo data on startup; it does not run a persistent generator.
+ - Backups: `node dist/scripts/backup.js` (creates consistent snapshot saved to `backend/data/backups`). Copy snapshots to durable storage.
+ - Retention: use `dist/scripts/retention.js` with `TELEMETRY_RETENTION_DAYS`. The script is dry-run by default; use `TELEMETRY_RETENTION_APPLY=true` to apply deletions.
 
-## Practical ops checklist
-- Ensure `JWT_SECRET` is set in production.
-- Monitor `/api/health` for WAL growth. If WAL grows unexpectedly, run a checkpoint or ensure backups run.
-- If ingest `429` rate limits are observed, tune client batching or increase capacity / throttle upstream sources.
+ ## SSE & realtime
+
+ - SSE is one-way (server → client). Monitor the number of active connections; ensure load balancers have sensible timeouts and support for long‑lived connections.
+
+ ## WAL considerations
+
+ - WAL can grow if checkpoints/backup do not run. Regular backups and occasional checkpoints keep WAL sizes bounded.
+
+ ## Troubleshooting
+
+ - `429` from `/api/ingest` — indicates client burst limits; tune client batching or spread load.
+ - Unexpected WAL growth — ensure backups/checkpoints run and disk I/O is healthy.
+

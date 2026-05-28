@@ -14,15 +14,15 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
         heading: "Run TokenWatch locally",
         body: [
           "Start the backend, then the frontend. SQLite initializes automatically and the dashboard reads live workspace data.",
-          "Create an account, open Settings, copy the workspace ID, and rotate the API key if you need a fresh secret value."
+          "Create an account, open Settings, copy the workspace ID, and rotate the API key if needed."
         ],
         code: "cd backend\nnpm install\nnpm run dev\n\ncd ../frontend\nnpm install\nnpm run dev"
       },
       {
         heading: "Send your first event",
         body: [
-          "The SDK posts to the configured ingest endpoint (default `/ingest`) and includes the workspace API key in `X-API-Key`.",
-          "The backend verifies the key server-side and attaches the event to that workspace; payloads cannot claim another workspace."
+          "The SDK posts to the ingest endpoint (default `/ingest`) and includes the workspace API key in `X-API-Key`.",
+          "The backend verifies the key and attaches the event to the authenticated workspace; clients cannot claim another workspace."
         ],
         code: "import * as TokenWatch from 'tokenwatch';\n\nTokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxxxxxxx', apiKey: process.env.TOKENWATCH_API_KEY });\n\nawait TokenWatch.track('llm.request.completed', {\n  route: '/api/chat',\n  provider: 'YourProvider',\n  model: 'your-model',\n  input_tokens: 120,\n  output_tokens: 80,\n  cost_usd: 0.0042,\n  latency_ms: 640\n});\n\nawait TokenWatch.flush();"
       }
@@ -34,15 +34,15 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
       {
         heading: "Initialization",
         body: [
-          "Only `apiUrl`, `workspaceId`, and `apiKey` are required. Operational controls (`batchSize`, `flushInterval`, `maxQueueSize`, `retryAttempts`) are optional and have safe defaults."
+          "Only `apiUrl`, `workspaceId`, and `apiKey` are required. Optional operational controls (`batchSize`, `flushInterval`, `maxQueueSize`, `retryAttempts`) have safe defaults."
         ],
         code: "TokenWatch.init({\n  apiUrl: \"https://tokenwatch.example.com\",\n  workspaceId: \"ws_xxxxxxxx\",\n  apiKey: \"tw_live_xxxxx\",\n  maxQueueSize: 1000,\n  batchSize: 50,\n  flushInterval: 25,\n  retryAttempts: 3,\n  debug: false\n});"
       },
       {
         heading: "Delivery behavior",
         body: [
-          "Events are queued in a bounded in-memory queue and flushed in groups. 4xx responses are treated as permanent failures, while 5xx and network errors are retried with a jittered backoff. `flush()` waits for outstanding deliveries.",
-          "Use `stats()` for operational visibility: queue size, in-flight requests, rejected counts, retries, and last error."
+          "Events are queued in a bounded in-memory queue and flushed in groups. 4xx responses are treated as permanent failures; 5xx and network errors are retried with jittered backoff. `flush()` waits for outstanding deliveries.",
+          "Use `stats()` for operational visibility: queue size, in‑flight requests, rejected counts, retries, and last error."
         ],
         code: "await TokenWatch.track(\"checkout.llm_call\", {\n  route: \"/checkout\",\n  provider: \"YourProvider\",\n  model: \"your-model\",\n  input_tokens: 240,\n  output_tokens: 120,\n  cost_usd: 0.006,\n  latency_ms: 820\n});\nawait TokenWatch.flush();\n\nconsole.log(TokenWatch.stats());"
       }
@@ -54,20 +54,20 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
       {
         heading: "Current status",
         body: [
-          "Workspaces store a webhook URL today. Delivery workers are intentionally not enabled yet, so production alerts should still be handled from the dashboard/API until webhook dispatch is added."
+          "Workspaces store an optional webhook URL. Delivery workers are not enabled in this release — alerts should be polled from the API or handled from the dashboard until dispatch is implemented."
         ]
       },
       {
         heading: "Planned payload shape",
         body: [
-          "Payloads will be workspace-scoped and signed before delivery. Receivers should verify the signature, process idempotently, and return 2xx only after durable handling."
+          "Planned webhook payloads will be workspace-scoped and signed. Receivers should verify signatures, handle idempotency, and return 2xx only after durable processing."
         ],
         code: "{\n  \"id\": \"evt_123\",\n  \"workspaceId\": \"ws_xxxxxxxx\",\n  \"type\": \"budget.threshold_exceeded\",\n  \"createdAt\": 1760000000000,\n  \"data\": {\n    \"spendToday\": 52.4,\n    \"threshold\": 50\n  }\n}"
       },
       {
         heading: "Local testing",
         body: [
-          "Use Settings to save an http://localhost URL during development. Keep HTTPS for production endpoints once delivery is implemented."
+          "During development, a local `http://localhost` webhook URL can be saved in Settings for testing. Use HTTPS in production once delivery is available."
         ]
       }
     ]
