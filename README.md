@@ -72,11 +72,12 @@
  - Backups: `node dist/scripts/backup.js` (uses SQLite online backup API). Backups saved to `backend/data/backups`.
  - Retention: `dist/scripts/retention.js` is dry-run by default. Use `TELEMETRY_RETENTION_APPLY=true` to delete.
 
- ## Next reading (deeper docs)
+## 📚 Next reading
 
- - Architecture: see `ARCHITECTURE.md` for the full runtime flow and tradeoffs.
- - Deployment & ops: `DEPLOYMENT.md` and `OPS.md` for environment variables, backups, and retention.
- - SDK usage and examples: `sdk/README.md` (install, examples, production notes).
+- 🏗️ [Architecture Guide](./ARCHITECTURE.md) — runtime flow, ingest pipeline, SSE, and scaling tradeoffs.
+- 🚀 [Deployment Guide](./DEPLOYMENT.md) — production setup, environment variables, backups, and retention.
+- 🛠️ [Operations Guide](./OPS.md) — monitoring, maintenance, health checks, and operational workflows.
+- 📦 [SDK Documentation](./sdk/README.md) — installation, examples, batching, retries, and production usage.
 
  ## Contributing
 
