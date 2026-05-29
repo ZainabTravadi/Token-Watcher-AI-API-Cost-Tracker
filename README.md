@@ -38,7 +38,7 @@
  3) Send telemetry from an app using the SDK
 
  ```js
- import * as TokenWatch from 'tokenwatch';
+ import { TokenWatch } from '@zainabtravadi/tokenwatch';
 
  TokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxx', apiKey: 'tw_live_xxx' });
  await TokenWatch.track('llm.request.completed', { route: '/api/chat', provider: 'openai', model: 'gpt-4o' });

@@ -1,5 +1,5 @@
 {
-  "name": "tokenwatch",
+  "name": "@zainabtravadi/tokenwatch",
   "version": "0.1.0",
   "private": false,
   "description": "Lightweight SDK for sending application telemetry to TokenWatch.",
@@ -13,6 +13,15 @@
     "monitoring"
   ],
   "license": "MIT",
+  "author": "Zainab Travadi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/issues"
+  },
+  "homepage": "https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker#readme",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",

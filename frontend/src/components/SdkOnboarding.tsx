@@ -23,9 +23,9 @@ function snippetFor(framework: Framework, workspace: WorkspaceInfo): string {
 
   if (framework === "next") {
     return `// app/api/chat/route.ts
-import * as TokenWatch from "tokenwatch";
+  import { TokenWatch } from "@zainabtravadi/tokenwatch";
 
-TokenWatch.init({
+  TokenWatch.init({
   apiUrl: "${API_BASE_URL}",
   workspaceId: "${workspace.id}",
   apiKey: process.env.TOKENWATCH_API_KEY!
@@ -56,9 +56,9 @@ export async function POST(request: Request) {
 
   if (framework === "express") {
     return `import express from "express";
-import * as TokenWatch from "tokenwatch";
+  import { TokenWatch } from "@zainabtravadi/tokenwatch";
 
-TokenWatch.init({
+  TokenWatch.init({
   apiUrl: "${API_BASE_URL}",
   workspaceId: "${workspace.id}",
   apiKey: process.env.TOKENWATCH_API_KEY ?? "${apiKey}"
@@ -106,7 +106,7 @@ requests.post(
 )`;
   }
 
-  return `import * as TokenWatch from "tokenwatch";
+  return `import { TokenWatch } from "@zainabtravadi/tokenwatch";
 
 TokenWatch.init({
   apiUrl: "${API_BASE_URL}",

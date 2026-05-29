@@ -24,7 +24,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
           "The SDK posts to the ingest endpoint (default `/ingest`) and includes the workspace API key in `X-API-Key`.",
           "The backend verifies the key and attaches the event to the authenticated workspace; clients cannot claim another workspace."
         ],
-        code: "import * as TokenWatch from 'tokenwatch';\n\nTokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxxxxxxx', apiKey: process.env.TOKENWATCH_API_KEY });\n\nawait TokenWatch.track('llm.request.completed', {\n  route: '/api/chat',\n  provider: 'YourProvider',\n  model: 'your-model',\n  input_tokens: 120,\n  output_tokens: 80,\n  cost_usd: 0.0042,\n  latency_ms: 640\n});\n\nawait TokenWatch.flush();"
+        code: "import { TokenWatch } from '@zainabtravadi/tokenwatch';\n\nTokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxxxxxxx', apiKey: process.env.TOKENWATCH_API_KEY });\n\nawait TokenWatch.track('llm.request.completed', {\n  route: '/api/chat',\n  provider: 'YourProvider',\n  model: 'your-model',\n  input_tokens: 120,\n  output_tokens: 80,\n  cost_usd: 0.0042,\n  latency_ms: 640\n});\n\nawait TokenWatch.flush();"
       }
     ]
   },
