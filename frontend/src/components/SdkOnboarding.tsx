@@ -23,7 +23,7 @@ function snippetFor(framework: Framework, workspace: WorkspaceInfo): string {
 
   if (framework === "next") {
     return `// app/api/chat/route.ts
-  import { TokenWatch } from "@zainabtravadi/tokenwatch";
+  import { TokenWatch } from "@zn_/tokenwatch";
 
   TokenWatch.init({
   apiUrl: "${API_BASE_URL}",
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
   if (framework === "express") {
     return `import express from "express";
-  import { TokenWatch } from "@zainabtravadi/tokenwatch";
+  import { TokenWatch } from "@zn_/tokenwatch";
 
   TokenWatch.init({
   apiUrl: "${API_BASE_URL}",
@@ -106,7 +106,7 @@ requests.post(
 )`;
   }
 
-  return `import { TokenWatch } from "@zainabtravadi/tokenwatch";
+  return `import { TokenWatch } from "@zn_/tokenwatch";
 
 TokenWatch.init({
   apiUrl: "${API_BASE_URL}",
@@ -134,7 +134,7 @@ export function SdkOnboarding({ workspace, compact = false }: { workspace: Works
   const [framework, setFramework] = useState<Framework>("node");
   const [copied, setCopied] = useState<string | null>(null);
   const snippet = useMemo(() => snippetFor(framework, workspace), [framework, workspace]);
-  const install = "npm install tokenwatch";
+  const install = "npm install @zn_/tokenwatch";
 
   const copy = async (id: string, value: string) => {
     await navigator.clipboard.writeText(value);

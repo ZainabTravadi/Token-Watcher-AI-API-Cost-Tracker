@@ -5,13 +5,13 @@ Small, dependency-free TypeScript SDK to send telemetry to a TokenWatch backend.
 Install
 
  ```bash
- npm install @zainabtravadi/tokenwatch
+ npm install @zn_/tokenwatch
  ```
 
 Quick start
 
 ```ts
-import { TokenWatch } from '@zainabtravadi/tokenwatch';
+import { TokenWatch } from '@zn_/tokenwatch';
 
 TokenWatch.init({
   apiUrl: 'http://localhost:3001',
@@ -51,7 +51,7 @@ Examples
 - Node (server-side):
 
 ```js
-import { TokenWatch } from '@zainabtravadi/tokenwatch';
+import { TokenWatch } from '@zn_/tokenwatch';
 
 TokenWatch.init({ apiUrl: 'https://tokenwatch.example', workspaceId: 'ws_x', apiKey: process.env.TOKENWATCH_API_KEY });
 await TokenWatch.track('request.completed', { route: '/api/chat', provider: 'openai', model: 'gpt-4o' });

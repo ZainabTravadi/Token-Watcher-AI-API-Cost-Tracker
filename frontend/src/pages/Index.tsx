@@ -92,9 +92,9 @@ const Index = () => {
           <div className="col-span-12 md:col-span-9">
             <div className="bg-surface border border-hairline p-5 font-mono text-[13px] leading-7">
               <div className="text-muted-foreground"># 1. install</div>
-              <div>npm install tokenwatch</div>
+              <div>npm install @zn_/tokenwatch</div>
               <div className="text-muted-foreground mt-3"># 2. wrap your client</div>
-              <div><span className="text-muted-foreground">import</span> {"{ track }"} <span className="text-muted-foreground">from</span> <span>"tokenwatch"</span></div>
+              <div><span className="text-muted-foreground">import</span> {"{ TokenWatch }"} <span className="text-muted-foreground">from</span> <span>"@zn_/tokenwatch"</span></div>
               <div><span className="text-muted-foreground">await</span> TokenWatch.track(<span className="text-muted-foreground">"llm.request.completed"</span>, {"{ route, provider, model, cost_usd }"})</div>
               <div className="text-muted-foreground mt-3"># 3. that's it. open the console.</div>
             </div>
