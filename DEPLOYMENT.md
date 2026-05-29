@@ -1,6 +1,36 @@
- # Deployment & Production checklist
+# Deployment & Production checklist
 
- Short, practical deployment notes for a single-node TokenWatch instance.
+Short, practical deployment notes for a single-node TokenWatch instance.
+
+## Local Development
+
+- Backend: [http://localhost:3001](http://localhost:3001)
+- Frontend: [http://localhost:5173](http://localhost:5173)
+- SDK: points to the backend URL you are running locally
+
+### Bash
+
+```bash
+cd backend
+npm install
+npm run dev
+
+cd ../frontend
+npm install
+npm run dev
+```
+
+### PowerShell
+
+```powershell
+Set-Location backend
+npm install
+npm run dev
+
+Set-Location ..\frontend
+npm install
+npm run dev
+```
 
  ## Environment
 
@@ -10,6 +40,15 @@
 	 - `PORT` (default 3001)
 	 - `DATABASE_PATH` (default ./data/tokenwatch.sqlite)
 	 - `TELEMETRY_RETENTION_DAYS` (optional)
+
+## Hosted Deployment Checklist
+
+- backend deployed
+- frontend deployed
+- `VITE_TOKENWATCH_API_URL` configured
+- JWT secret configured
+- backups configured
+- retention policy configured
 
  ## Start (production)
 

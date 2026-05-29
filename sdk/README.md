@@ -8,29 +8,111 @@ Install
  npm install @zn_/tokenwatch
  ```
 
-Quick start
+5-Minute Quick Start
+
+1. Install the package.
+
+```bash
+npm install @zn_/tokenwatch
+```
+
+2. Initialize the SDK.
+
+```ts
+import { TokenWatch } from "@zn_/tokenwatch";
+
+TokenWatch.init({
+  apiUrl: "http://localhost:3001",
+  workspaceId: "ws_xxxxxxxx",
+  apiKey: "tw_live_xxxxxxxx"
+});
+```
+
+3. Send telemetry.
+
+```ts
+await TokenWatch.track(
+  "llm.request.completed",
+  {
+    route: "/api/chat",
+    provider: "openai",
+    model: "gpt-4o",
+    input_tokens: 120,
+    output_tokens: 80,
+    cost_usd: 0.0042,
+    latency_ms: 640
+  }
+);
+```
+
+4. Flush before exit.
+
+```ts
+await TokenWatch.flush();
+```
+
+5. Verify in dashboard.
+
+Look in **Overview**, **Recent Activity**, **Endpoints**, and **Models** after the first event lands.
+
+Get your credentials
+
+1. Create an account in the dashboard.
+2. A default workspace is created automatically when you sign up.
+3. Copy the Workspace ID from the sidebar.
+4. Open Settings → API Keys to view or rotate your API key.
+5. Use `http://localhost:3001` for local development.
+6. Use your hosted backend URL when you deploy TokenWatch.
+
+```ts
+TokenWatch.init({
+  apiUrl: "http://localhost:3001",
+  workspaceId: "ws_xxxxxxxx",
+  apiKey: "tw_live_xxxxxxxx"
+});
+```
+
+First Telemetry Event
 
 ```ts
 import { TokenWatch } from '@zn_/tokenwatch';
 
-TokenWatch.init({
-  apiUrl: 'http://localhost:3001',
-  workspaceId: 'ws_xxxxxxxx',
-  apiKey: process.env.TOKENWATCH_API_KEY!
-});
-
-await TokenWatch.track('llm.request.completed', {
-  route: '/api/chat',
-  provider: 'openai',
-  model: 'gpt-4o',
-  input_tokens: 120,
-  output_tokens: 80,
-  cost_usd: 0.0042,
-  latency_ms: 640
-});
-
+TokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxxxxxxx', apiKey: 'tw_live_xxxxxxxx' });
+await TokenWatch.track('llm.request.completed', { route: '/api/chat', provider: 'openai', model: 'gpt-4o' });
 await TokenWatch.flush();
 ```
+
+Why flush() matters
+
+> **Warning:** TokenWatch batches telemetry before delivery. A short Node script can exit before the queued event leaves the process unless you call `flush()`.
+
+- SDK batches events before sending them.
+- Node scripts can exit before delivery completes.
+- `flush()` guarantees queued telemetry is sent before shutdown.
+
+Troubleshooting
+
+### No data appears
+
+- Is the backend running?
+- Is the `apiUrl` correct?
+- Is the `workspaceId` correct?
+- Is the API key valid?
+- Did you call `flush()`?
+- Are you looking at the correct workspace?
+
+### Events visible in API but not dashboard
+
+- The dashboard aggregates data by workspace.
+- Verify the workspace selection in the sidebar.
+- Refresh the page.
+- Check the **Recent Activity** table.
+
+### Realtime stream disconnected
+
+- SSE reconnects automatically.
+- Restarting localhost can temporarily disconnect the stream.
+- Refresh the browser if the stream does not recover quickly.
 
 Core concepts
 

@@ -11,18 +11,28 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
     title: "Getting started",
     sections: [
       {
+        heading: "5-Minute Quick Start",
+        body: [
+          "Install the package, initialize the SDK, send one event, flush before exit, then verify in the dashboard.",
+          "Look in Overview, Recent Activity, Endpoints, and Models after the first event lands."
+        ],
+        code: "npm install @zn_/tokenwatch\n\nimport { TokenWatch } from \"@zn_/tokenwatch\";\n\nTokenWatch.init({\n  apiUrl: \"http://localhost:3001\",\n  workspaceId: \"ws_xxxxxxxx\",\n  apiKey: \"tw_live_xxxxxxxx\"\n});\n\nawait TokenWatch.track(\n  \"llm.request.completed\",\n  {\n    route: \"/api/chat\",\n    provider: \"openai\",\n    model: \"gpt-4o\",\n    input_tokens: 120,\n    output_tokens: 80,\n    cost_usd: 0.0042,\n    latency_ms: 640\n  }\n);\n\nawait TokenWatch.flush();"
+      },
+      {
         heading: "Run TokenWatch locally",
         body: [
           "Start the backend, then the frontend. SQLite initializes automatically and the dashboard reads live workspace data.",
-          "Create an account, open Settings, copy the workspace ID, and rotate the API key if needed."
+          "Create an account and a default workspace is created automatically. Copy the Workspace ID from the sidebar, then open Settings → API Keys to view or rotate your API key."
         ],
         code: "cd backend\nnpm install\nnpm run dev\n\ncd ../frontend\nnpm install\nnpm run dev"
       },
       {
         heading: "Send your first event",
         body: [
+          "Use `http://localhost:3001` for local development or your hosted backend URL in production.",
           "The SDK posts to the ingest endpoint (default `/ingest`) and includes the workspace API key in `X-API-Key`.",
-          "The backend verifies the key and attaches the event to the authenticated workspace; clients cannot claim another workspace."
+          "The backend verifies the key and attaches the event to the authenticated workspace; clients cannot claim another workspace.",
+          "Verify in dashboard: Overview, Recent Activity, Endpoints, and Models."
         ],
         code: "import { TokenWatch } from '@zn_/tokenwatch';\n\nTokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxxxxxxx', apiKey: process.env.TOKENWATCH_API_KEY });\n\nawait TokenWatch.track('llm.request.completed', {\n  route: '/api/chat',\n  provider: 'YourProvider',\n  model: 'your-model',\n  input_tokens: 120,\n  output_tokens: 80,\n  cost_usd: 0.0042,\n  latency_ms: 640\n});\n\nawait TokenWatch.flush();"
       }
@@ -32,8 +42,17 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
     title: "SDK reference",
     sections: [
       {
+        heading: "Why flush() matters",
+        body: [
+          "TokenWatch batches events before delivery, so a short Node script can exit before telemetry reaches the backend.",
+          "Calling `flush()` guarantees queued telemetry is sent before the process exits."
+        ],
+        code: "await TokenWatch.flush();"
+      },
+      {
         heading: "Initialization",
         body: [
+          "`workspaceId` comes from the sidebar in the dashboard and `apiKey` comes from Settings → API Keys. Use `http://localhost:3001` locally or your hosted backend URL in production.",
           "Only `apiUrl`, `workspaceId`, and `apiKey` are required. Optional operational controls (`batchSize`, `flushInterval`, `maxQueueSize`, `retryAttempts`) have safe defaults."
         ],
         code: "TokenWatch.init({\n  apiUrl: \"https://tokenwatch.example.com\",\n  workspaceId: \"ws_xxxxxxxx\",\n  apiKey: \"tw_live_xxxxx\",\n  maxQueueSize: 1000,\n  batchSize: 50,\n  flushInterval: 25,\n  retryAttempts: 3,\n  debug: false\n});"
@@ -45,6 +64,15 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
           "Use `stats()` for operational visibility: queue size, in‑flight requests, rejected counts, retries, and last error."
         ],
         code: "await TokenWatch.track(\"checkout.llm_call\", {\n  route: \"/checkout\",\n  provider: \"YourProvider\",\n  model: \"your-model\",\n  input_tokens: 240,\n  output_tokens: 120,\n  cost_usd: 0.006,\n  latency_ms: 820\n});\nawait TokenWatch.flush();\n\nconsole.log(TokenWatch.stats());"
+      }
+      ,
+      {
+        heading: "Troubleshooting",
+        body: [
+          "No data appears: check the backend, apiUrl, workspaceId, API key, flush(), and workspace selection.",
+          "Events visible in API but not dashboard: the dashboard aggregates by workspace; verify workspace selection, refresh the page, and check Recent Activity.",
+          "Realtime stream disconnected: SSE reconnects automatically; localhost restarts can temporarily disconnect the stream and a browser refresh may help."
+        ]
       }
     ]
   },

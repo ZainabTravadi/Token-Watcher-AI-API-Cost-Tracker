@@ -33,7 +33,7 @@ const Index = () => {
             <em className="font-serif italic">AI money</em> is going.
           </h1>
           <p className="text-lg max-w-xl text-foreground/80 leading-relaxed mb-6">
-            Install the SDK, wrap your client, and see telemetry stream live.
+            Install the SDK, copy your Workspace ID from the sidebar, grab your API key from Settings → API Keys, and see telemetry stream live.
             Track every request, every token, and every dollar across your endpoints.
           </p>
           <div className="flex flex-wrap items-center gap-4">

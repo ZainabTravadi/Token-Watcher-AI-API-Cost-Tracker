@@ -1,51 +1,165 @@
- # TokenWatch — local telemetry for LLM-powered services
+# TokenWatch — AI telemetry and cost monitoring
 
- ⚡ TokenWatch captures LLM request telemetry (route, model, tokens, latency, cost, errors) and provides a lightweight dashboard for realtime visibility.
+## What is TokenWatch?
 
- This repository contains three main parts:
- - `backend/` — TypeScript Express API, authentication, ingest pipeline, analytics, and SSE streaming backed by SQLite (better-sqlite3).
- - `frontend/` — React + Vite dashboard for workspace-level analytics, request logs and realtime updates.
- - `sdk/` — Small, dependency‑free TypeScript SDK that batches and delivers telemetry to the ingest API.
+TokenWatch is a lightweight AI telemetry and cost monitoring platform.
+It helps teams track token usage, model costs, latency, failures, and endpoint activity through a lightweight SDK and dashboard.
 
- The README below is a concise developer guide: quick start, core concepts, and where to look for implementation details.
+## Why TokenWatch?
 
- ## Why use TokenWatch
+Many tools require proxying AI traffic through a third-party service.
+TokenWatch takes a different approach: instrument your application directly, keep provider integrations unchanged, retain control of request flow, and monitor usage through telemetry.
 
- - Quick to run locally or as a single-node beta service.
- - Workspace-scoped telemetry via API keys (`X-API-Key`) so clients cannot write into other workspaces.
- - Realtime updates with Server‑Sent Events (SSE) for live dashboards.
- - Simple, auditable pipeline that is easy to inspect and extend.
+### TokenWatch vs Proxy-Based Monitoring
 
- ## Quick start — 3 steps (gets you live)
+- TokenWatch instruments your app directly instead of forcing traffic through a proxy.
+- Your provider SDKs stay unchanged, so you keep the integration patterns you already use.
+- You keep control of request flow while still collecting telemetry for analytics and cost monitoring.
 
- 1) Start the backend
+## How TokenWatch Works
 
- ```bash
- cd backend
- npm install
- npm run build
- NODE_ENV=development npm run dev
- ```
+- Backend: ingest API, analytics, authentication, and storage.
+- Dashboard: workspaces, analytics, and realtime monitoring.
+- SDK: telemetry collection, batching, and delivery.
 
- 2) Start the frontend
+This repository contains three main parts:
+- `backend/` — TypeScript Express API, authentication, ingest pipeline, analytics, and SSE streaming backed by SQLite (better-sqlite3).
+- `frontend/` — React + Vite dashboard for workspace-level analytics, request logs and realtime updates.
+- `sdk/` — Small, dependency‑free TypeScript SDK that batches and delivers telemetry to the ingest API.
 
- ```bash
- cd frontend
- npm install
- npm run dev
- ```
+The README below is a concise developer guide: quick start, core concepts, and where to look for implementation details.
 
- 3) Send telemetry from an app using the SDK
+## Workspace Lifecycle
 
- ```js
-import { TokenWatch } from '@zn_/tokenwatch';
+- Signing up creates a default workspace automatically.
+- Telemetry is isolated per workspace.
+- Switching workspaces changes the analytics context in the dashboard.
+- Deleting or changing workspaces affects what you can see in analytics and recent activity.
 
- TokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxx', apiKey: 'tw_live_xxx' });
- await TokenWatch.track('llm.request.completed', { route: '/api/chat', provider: 'openai', model: 'gpt-4o' });
- await TokenWatch.flush();
- ```
+## API Key Lifecycle
 
- This flow demonstrates the product story: Install SDK → send telemetry → see live analytics.
+- API keys are workspace-scoped.
+- API keys authenticate telemetry ingestion.
+- Rotating a key invalidates the previous key.
+- SDK deployments must be updated after rotation.
+
+> **Warning:** If you rotate an API key, update every deployed SDK instance that uses it before the old key is removed from service.
+
+## Installation
+
+```bash
+npm install @zn_/tokenwatch
+```
+
+## 5-Minute Quick Start
+
+1. Install the package.
+
+```bash
+npm install @zn_/tokenwatch
+```
+
+2. Initialize the SDK.
+
+```js
+import { TokenWatch } from "@zn_/tokenwatch";
+
+TokenWatch.init({
+	apiUrl: "http://localhost:3001",
+	workspaceId: "ws_xxxxxxxx",
+	apiKey: "tw_live_xxxxxxxx"
+});
+```
+
+3. Send telemetry.
+
+```js
+await TokenWatch.track(
+	"llm.request.completed",
+	{
+		route: "/api/chat",
+		provider: "openai",
+		model: "gpt-4o",
+		input_tokens: 120,
+		output_tokens: 80,
+		cost_usd: 0.0042,
+		latency_ms: 640
+	}
+);
+```
+
+4. Flush before exit.
+
+```js
+await TokenWatch.flush();
+```
+
+5. Verify in dashboard.
+
+Look in **Overview**, **Recent Activity**, **Endpoints**, and **Models** after the first event lands.
+
+## Get your credentials
+
+1. Create an account in the dashboard.
+2. A default workspace is created automatically when you sign up.
+3. Copy the Workspace ID from the sidebar.
+4. Open Settings → API Keys to view or rotate your API key.
+5. Use `http://localhost:3001` for local development.
+6. Use your hosted backend URL when you deploy TokenWatch.
+
+```js
+TokenWatch.init({
+	apiUrl: "http://localhost:3001",
+	workspaceId: "ws_xxxxxxxx",
+	apiKey: "tw_live_xxxxxxxx"
+});
+```
+
+## First Telemetry Event
+
+```js
+import { TokenWatch } from "@zn_/tokenwatch";
+
+TokenWatch.init({ apiUrl: "http://localhost:3001", workspaceId: "ws_xxxxxxxx", apiKey: "tw_live_xxxxxxxx" });
+await TokenWatch.track("llm.request.completed", { route: "/api/chat", provider: "openai", model: "gpt-4o" });
+await TokenWatch.flush();
+```
+
+## Why flush() matters
+
+> **Warning:** TokenWatch batches telemetry before delivery. A short Node script can exit before the queued event leaves the process unless you call `flush()`.
+
+- SDK batches events before sending them.
+- Node scripts can exit before delivery completes.
+- `flush()` guarantees queued telemetry is sent before shutdown.
+
+## Troubleshooting
+
+### No data appears
+
+- Is the backend running?
+- Is the `apiUrl` correct?
+- Is the `workspaceId` correct?
+- Is the API key valid?
+- Did you call `flush()`?
+- Are you looking at the correct workspace?
+
+### Events visible in API but not dashboard
+
+- The dashboard aggregates data by workspace.
+- Verify the workspace selection in the sidebar.
+- Refresh the page.
+- Check the **Recent Activity** table.
+
+### Realtime stream disconnected
+
+- SSE reconnects automatically.
+- Restarting localhost can temporarily disconnect the stream.
+- Refresh the browser if the stream does not recover quickly.
+
+## Deployment
+
+See [Deployment Guide](./DEPLOYMENT.md) for local development commands, hosted deployment checklists, backups, and retention guidance.
 
  ## What the system does (short)
 
