@@ -2,6 +2,24 @@
 
  Short operational checklist and troubleshooting tips.
 
+## Frontend / Backend / SQLite flow
+
+The frontend talks to the backend API, and the backend reads and writes SQLite.
+
+- Frontend should use the deployed backend URL in production.
+- Local frontend can use `http://localhost:3001` for the backend.
+- Keep SSE reachable at `/api/telemetry/stream` so realtime updates can flow back to the dashboard.
+- If a reverse proxy is in front of the backend, make sure it does not buffer or terminate the SSE stream.
+
+## Common Production Problems
+
+- SSE disconnects: the stream reconnects automatically, but proxy timeouts or localhost restarts can interrupt it temporarily.
+- Wrong backend URL: the frontend will appear healthy but telemetry will never reach the backend.
+- Invalid API keys: ingestion requests will fail authorization and events will not be stored.
+- Empty dashboard: check the workspace selection and confirm data is being written to the expected workspace.
+- CORS issues: ensure the frontend origin is allowed by the backend deployment.
+- Backend unavailable: verify the backend service is running and reachable from the frontend.
+
  ## Health & monitoring
 
  - Health endpoint: `GET /api/health` — inspect `dbFiles.fileSizeBytes`, `dbFiles.walSizeBytes`, and `operational` counters (`activeSseConnections`, `activeSimulators`).

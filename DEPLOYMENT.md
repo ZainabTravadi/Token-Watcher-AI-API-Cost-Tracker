@@ -2,6 +2,16 @@
 
 Short, practical deployment notes for a single-node TokenWatch instance.
 
+## Frontend Deployment Flow
+
+Frontend → Backend API → SQLite.
+
+- The frontend should point to the backend API URL, not directly to SQLite.
+- Local frontend example: use the local backend URL at [http://localhost:3001](http://localhost:3001).
+- Production frontend example: use your deployed backend URL.
+- SSE endpoint requirements: the backend must expose `/api/telemetry/stream` and keep the connection open for workspace-scoped realtime updates.
+- Reverse proxy considerations: preserve SSE streaming headers, avoid buffering, and allow long-lived connections through your proxy or load balancer.
+
 ## Local Development
 
 - Backend: [http://localhost:3001](http://localhost:3001)
@@ -32,6 +42,21 @@ npm install
 npm run dev
 ```
 
+## Hosted Deployment Walkthrough
+
+### Backend
+
+- Set `NODE_ENV=production`.
+- Set a strong `JWT_SECRET`.
+- Set `DATABASE_PATH` to your production SQLite path.
+- Store API keys server-side and keep them out of the browser bundle.
+
+### Frontend
+
+- Build the frontend for production.
+- Set `VITE_TOKENWATCH_API_URL` to your deployed backend URL.
+- Deploy the frontend separately from the backend if needed.
+
  ## Environment
 
  - Copy `.env.example` → `.env` and set values for production.
@@ -49,6 +74,17 @@ npm run dev
 - JWT secret configured
 - backups configured
 - retention policy configured
+
+## Production Verification
+
+After deployment verify:
+
+- Login works
+- Workspace visible
+- API key creation works
+- SDK can ingest events
+- Dashboard receives data
+- SSE stream connected
 
  ## Start (production)
 

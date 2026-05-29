@@ -137,20 +137,7 @@ const quickStartSteps = [
   "Verify in Overview, Recent Activity, Endpoints, and Models"
 ];
 
-const troubleshootingItems = [
-  {
-    title: "No data appears",
-    items: ["Check the backend is running", "Confirm the apiUrl", "Confirm the Workspace ID", "Confirm the API key", "Call flush()", "Make sure you are in the correct workspace"],
-  },
-  {
-    title: "Events visible in API but not dashboard",
-    items: ["Dashboard aggregates by workspace", "Verify workspace selection in the sidebar", "Refresh the page", "Check the Recent Activity table"],
-  },
-  {
-    title: "Realtime stream disconnected",
-    items: ["SSE reconnects automatically", "Localhost restarts can temporarily disconnect the stream", "Refresh the browser if needed"],
-  },
-];
+const troubleshootingItems = ["Is backend running?", "Is apiUrl correct?", "Is workspaceId correct?", "Is API key valid?", "Did you call flush()?", "Are filters cleared?"];
 
 export function SdkOnboarding({ workspace, compact = false }: { workspace: WorkspaceInfo; compact?: boolean }) {
   const [framework, setFramework] = useState<Framework>("node");
@@ -181,8 +168,10 @@ export function SdkOnboarding({ workspace, compact = false }: { workspace: Works
       </div>
 
       <div className="rounded border border-hairline bg-background p-4 text-sm leading-6 text-muted-foreground">
-        <p className="font-medium text-foreground">Where credentials come from</p>
-        <p className="mt-1">Workspace ID lives in the sidebar. API keys live under Settings → API Keys. Use <span className="font-mono">http://localhost:3001</span> for local development or your hosted backend URL in production.</p>
+        <p className="font-medium text-foreground">Need credentials?</p>
+        <p className="mt-1"><span className="font-medium text-foreground">Workspace ID</span><br />Dashboard → Sidebar → Copy Workspace ID</p>
+        <p className="mt-2"><span className="font-medium text-foreground">API Key</span><br />Dashboard → Settings → API Keys</p>
+        <p className="mt-2"><span className="font-medium text-foreground">apiUrl</span><br />Local: <span className="font-mono">http://localhost:3001</span><br />Hosted: your deployed backend URL</p>
       </div>
 
       <div className="rounded border border-hairline bg-background p-4 text-sm leading-6">
@@ -192,16 +181,6 @@ export function SdkOnboarding({ workspace, compact = false }: { workspace: Works
             <li key={step}>{step}</li>
           ))}
         </ol>
-      </div>
-
-      <div className="rounded border border-amber-500/40 bg-amber-500/10 p-4 text-sm leading-6 text-foreground">
-        <p className="font-medium">Why flush() matters</p>
-        <p className="mt-1">TokenWatch batches events before delivery. Node scripts can exit before the queued event leaves the process unless you call <span className="font-mono">flush()</span>.</p>
-        <ul className="mt-2 space-y-1 list-disc pl-5 text-muted-foreground">
-          <li>SDK batches events before sending them.</li>
-          <li>Node scripts can exit before delivery completes.</li>
-          <li><span className="font-mono">flush()</span> guarantees queued telemetry is sent before shutdown.</li>
-        </ul>
       </div>
 
       <div className="rounded border border-hairline bg-background p-4 text-sm leading-6">
@@ -251,7 +230,33 @@ export function SdkOnboarding({ workspace, compact = false }: { workspace: Works
         </Button>
       </div>
 
-      <p className="text-sm text-muted-foreground">Verify in dashboard: check Overview, Recent Activity, Endpoints, and Models after the first event lands.</p>
+      <div className="rounded border border-hairline bg-background p-4 text-sm leading-6 text-muted-foreground">
+        <p className="font-medium text-foreground">Expected Result</p>
+        <ul className="mt-2 space-y-1 list-disc pl-5">
+          <li>Overview page updates</li>
+          <li>Recent Activity shows a new row</li>
+          <li>Endpoint appears in analytics</li>
+          <li>Stream status shows connected</li>
+        </ul>
+      </div>
+
+      <div className="rounded border border-amber-500/40 bg-amber-500/10 p-4 text-sm leading-6 text-foreground">
+        <p className="font-medium">Why flush() matters</p>
+        <p className="mt-1">Telemetry is batched. Short-lived scripts and serverless functions may exit before queued events are delivered.</p>
+        <p className="mt-2">Always call:</p>
+        <pre className="mt-2 overflow-x-auto rounded border border-amber-500/30 bg-background p-3 text-xs font-mono">await TokenWatch.flush();</pre>
+        <p className="mt-2">before shutdown.</p>
+      </div>
+
+      <div className="rounded border border-hairline bg-background p-4 text-sm leading-6">
+        <p className="font-medium">Troubleshooting</p>
+        <p className="mt-2 font-medium text-muted-foreground">No data appearing?</p>
+        <ol className="mt-1 space-y-1 list-decimal pl-5 text-muted-foreground">
+          {troubleshootingItems.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ol>
+      </div>
     </section>
   );
 }

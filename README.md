@@ -51,6 +51,16 @@ The README below is a concise developer guide: quick start, core concepts, and w
 npm install @zn_/tokenwatch
 ```
 
+## Need credentials?
+
+- Workspace ID
+	- Dashboard → Sidebar → Copy Workspace ID
+- API Key
+	- Dashboard → Settings → API Keys
+- apiUrl
+	- Local: [http://localhost:3001](http://localhost:3001)
+	- Hosted: your deployed backend URL
+
 ## 5-Minute Quick Start
 
 1. Install the package.
@@ -98,68 +108,50 @@ await TokenWatch.flush();
 
 Look in **Overview**, **Recent Activity**, **Endpoints**, and **Models** after the first event lands.
 
-## Get your credentials
+### Expected Result
 
-1. Create an account in the dashboard.
-2. A default workspace is created automatically when you sign up.
-3. Copy the Workspace ID from the sidebar.
-4. Open Settings → API Keys to view or rotate your API key.
-5. Use `http://localhost:3001` for local development.
-6. Use your hosted backend URL when you deploy TokenWatch.
-
-```js
-TokenWatch.init({
-	apiUrl: "http://localhost:3001",
-	workspaceId: "ws_xxxxxxxx",
-	apiKey: "tw_live_xxxxxxxx"
-});
-```
-
-## First Telemetry Event
-
-```js
-import { TokenWatch } from "@zn_/tokenwatch";
-
-TokenWatch.init({ apiUrl: "http://localhost:3001", workspaceId: "ws_xxxxxxxx", apiKey: "tw_live_xxxxxxxx" });
-await TokenWatch.track("llm.request.completed", { route: "/api/chat", provider: "openai", model: "gpt-4o" });
-await TokenWatch.flush();
-```
+- ✓ Overview page updates
+- ✓ Recent Activity shows a new row
+- ✓ Endpoint appears in analytics
+- ✓ Stream status shows connected
 
 ## Why flush() matters
 
-> **Warning:** TokenWatch batches telemetry before delivery. A short Node script can exit before the queued event leaves the process unless you call `flush()`.
+> **Warning:** Telemetry is batched. Short-lived scripts and serverless functions may exit before queued events are delivered.
 
-- SDK batches events before sending them.
-- Node scripts can exit before delivery completes.
-- `flush()` guarantees queued telemetry is sent before shutdown.
+Always call:
+
+```js
+await TokenWatch.flush();
+```
+
+before shutdown.
 
 ## Troubleshooting
 
-### No data appears
+- No data appearing?
+	1. Is backend running?
+	2. Is `apiUrl` correct?
+	3. Is `workspaceId` correct?
+	4. Is API key valid?
+	5. Did you call `flush()`?
+	6. Are filters cleared?
 
-- Is the backend running?
-- Is the `apiUrl` correct?
-- Is the `workspaceId` correct?
-- Is the API key valid?
-- Did you call `flush()`?
-- Are you looking at the correct workspace?
-
-### Events visible in API but not dashboard
-
-- The dashboard aggregates data by workspace.
-- Verify the workspace selection in the sidebar.
-- Refresh the page.
-- Check the **Recent Activity** table.
-
-### Realtime stream disconnected
-
-- SSE reconnects automatically.
-- Restarting localhost can temporarily disconnect the stream.
-- Refresh the browser if the stream does not recover quickly.
+- If events appear in the API but not the dashboard, verify the workspace selection in the sidebar and refresh the page.
+- If the realtime stream disconnects, SSE reconnects automatically; localhost restarts can temporarily disconnect the stream.
 
 ## Deployment
 
 See [Deployment Guide](./DEPLOYMENT.md) for local development commands, hosted deployment checklists, backups, and retention guidance.
+
+### Frontend Deployment
+
+The frontend should point at the backend API URL, which then reads and writes SQLite.
+
+- Local frontend example: use `http://localhost:3001` for the backend.
+- Production frontend example: use your deployed backend URL.
+- SSE endpoint requirement: `/api/telemetry/stream` must remain reachable for realtime dashboard updates.
+- Reverse proxy consideration: avoid buffering SSE responses and preserve long-lived connections.
 
  ## What the system does (short)
 

@@ -11,6 +11,16 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
     title: "Getting started",
     sections: [
       {
+        heading: "Frontend Deployment",
+        body: [
+          "The frontend should point to the backend API URL, which then talks to SQLite.",
+          "Local example: use http://localhost:3001 for the backend.",
+          "Production example: use your deployed backend URL.",
+          "SSE endpoint requirement: /api/telemetry/stream must remain reachable.",
+          "Reverse proxy consideration: avoid buffering SSE responses and preserve long-lived connections."
+        ]
+      },
+      {
         heading: "5-Minute Quick Start",
         body: [
           "Install the package, initialize the SDK, send one event, flush before exit, then verify in the dashboard.",
@@ -19,36 +29,65 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
         code: "npm install @zn_/tokenwatch\n\nimport { TokenWatch } from \"@zn_/tokenwatch\";\n\nTokenWatch.init({\n  apiUrl: \"http://localhost:3001\",\n  workspaceId: \"ws_xxxxxxxx\",\n  apiKey: \"tw_live_xxxxxxxx\"\n});\n\nawait TokenWatch.track(\n  \"llm.request.completed\",\n  {\n    route: \"/api/chat\",\n    provider: \"openai\",\n    model: \"gpt-4o\",\n    input_tokens: 120,\n    output_tokens: 80,\n    cost_usd: 0.0042,\n    latency_ms: 640\n  }\n);\n\nawait TokenWatch.flush();"
       },
       {
-        heading: "Run TokenWatch locally",
+        heading: "Expected Result",
         body: [
-          "Start the backend, then the frontend. SQLite initializes automatically and the dashboard reads live workspace data.",
-          "Create an account and a default workspace is created automatically. Copy the Workspace ID from the sidebar, then open Settings → API Keys to view or rotate your API key."
+          "Overview page updates.",
+          "Recent Activity shows a new row.",
+          "Endpoint appears in analytics.",
+          "Stream status shows connected."
         ],
-        code: "cd backend\nnpm install\nnpm run dev\n\ncd ../frontend\nnpm install\nnpm run dev"
       },
       {
-        heading: "Send your first event",
+        heading: "Need credentials?",
         body: [
-          "Use `http://localhost:3001` for local development or your hosted backend URL in production.",
-          "The SDK posts to the ingest endpoint (default `/ingest`) and includes the workspace API key in `X-API-Key`.",
-          "The backend verifies the key and attaches the event to the authenticated workspace; clients cannot claim another workspace.",
-          "Verify in dashboard: Overview, Recent Activity, Endpoints, and Models."
+          "Workspace ID: Dashboard → Sidebar → Copy Workspace ID.",
+          "API Key: Dashboard → Settings → API Keys.",
+          "apiUrl: Local [http://localhost:3001](http://localhost:3001), hosted = your deployed backend URL."
         ],
-        code: "import { TokenWatch } from '@zn_/tokenwatch';\n\nTokenWatch.init({ apiUrl: 'http://localhost:3001', workspaceId: 'ws_xxxxxxxx', apiKey: process.env.TOKENWATCH_API_KEY });\n\nawait TokenWatch.track('llm.request.completed', {\n  route: '/api/chat',\n  provider: 'YourProvider',\n  model: 'your-model',\n  input_tokens: 120,\n  output_tokens: 80,\n  cost_usd: 0.0042,\n  latency_ms: 640\n});\n\nawait TokenWatch.flush();"
+      },
+      {
+        heading: "Production Verification",
+        body: [
+          "After deployment verify: Login works, Workspace visible, API key creation works, SDK can ingest events, Dashboard receives data, SSE stream connected."
+        ]
+      },
+      {
+        heading: "Common Production Problems",
+        body: [
+          "SSE disconnects: the stream reconnects automatically, but proxy timeouts or localhost restarts can interrupt it temporarily.",
+          "Wrong backend URL: the frontend will appear healthy but telemetry will never reach the backend.",
+          "Invalid API keys: ingestion requests will fail authorization and events will not be stored.",
+          "Empty dashboard: check the workspace selection and confirm data is being written to the expected workspace.",
+          "CORS issues: ensure the frontend origin is allowed by the backend deployment.",
+          "Backend unavailable: verify the backend service is running and reachable from the frontend."
+        ]
+      },
+      {
+        heading: "Why flush() matters",
+        body: [
+          "Telemetry is batched.",
+          "Short-lived scripts and serverless functions may exit before queued events are delivered.",
+          "Always call `await TokenWatch.flush();` before shutdown."
+        ],
+        code: "await TokenWatch.flush();"
+      },
+      {
+        heading: "Troubleshooting",
+        body: [
+          "No data appearing?",
+          "1. Is backend running?",
+          "2. Is apiUrl correct?",
+          "3. Is workspaceId correct?",
+          "4. Is API key valid?",
+          "5. Did you call flush()?",
+          "6. Are filters cleared?"
+        ]
       }
     ]
   },
   "sdk-reference": {
     title: "SDK reference",
     sections: [
-      {
-        heading: "Why flush() matters",
-        body: [
-          "TokenWatch batches events before delivery, so a short Node script can exit before telemetry reaches the backend.",
-          "Calling `flush()` guarantees queued telemetry is sent before the process exits."
-        ],
-        code: "await TokenWatch.flush();"
-      },
       {
         heading: "Initialization",
         body: [
@@ -64,15 +103,6 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
           "Use `stats()` for operational visibility: queue size, in‑flight requests, rejected counts, retries, and last error."
         ],
         code: "await TokenWatch.track(\"checkout.llm_call\", {\n  route: \"/checkout\",\n  provider: \"YourProvider\",\n  model: \"your-model\",\n  input_tokens: 240,\n  output_tokens: 120,\n  cost_usd: 0.006,\n  latency_ms: 820\n});\nawait TokenWatch.flush();\n\nconsole.log(TokenWatch.stats());"
-      }
-      ,
-      {
-        heading: "Troubleshooting",
-        body: [
-          "No data appears: check the backend, apiUrl, workspaceId, API key, flush(), and workspace selection.",
-          "Events visible in API but not dashboard: the dashboard aggregates by workspace; verify workspace selection, refresh the page, and check Recent Activity.",
-          "Realtime stream disconnected: SSE reconnects automatically; localhost restarts can temporarily disconnect the stream and a browser refresh may help."
-        ]
       }
     ]
   },
