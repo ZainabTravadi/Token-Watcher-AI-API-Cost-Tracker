@@ -16,7 +16,7 @@
   "author": "Zainab Travadi",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker.git"
+    "url": "git+https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker.git"
   },
   "bugs": {
     "url": "https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/issues"
