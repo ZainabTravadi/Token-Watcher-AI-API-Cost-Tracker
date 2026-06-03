@@ -1,10 +1,11 @@
-import { closeDatabase } from "../db/database";
+import { closeDatabase, initializeDatabase } from "../db/database";
 import { seedTelemetryDataset } from "../services/simulatorService";
 
 async function main(): Promise<void> {
-  const inserted = seedTelemetryDataset(true);
+  await initializeDatabase();
+  const inserted = await seedTelemetryDataset(true);
   process.stdout.write(`Seeded ${inserted} telemetry rows\n`);
-  closeDatabase();
+  await closeDatabase();
 }
 
 void main().catch((error: unknown) => {

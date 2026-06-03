@@ -1,26 +1,16 @@
 declare module "better-sqlite3" {
-  export interface RunResult {
-    changes: number;
-    lastInsertRowid: number | bigint;
-  }
+  type SqlitePrepareResult = {
+    all(...params: unknown[]): unknown[];
+    get(...params: unknown[]): unknown;
+  };
 
-  export interface Statement<TBind = unknown> {
-    run(...params: any[]): RunResult;
-    get(...params: any[]): unknown;
-    all(...params: any[]): unknown[];
-  }
-
-  export interface Transaction<TArgs extends unknown[] = []> {
-    (...args: TArgs): unknown;
-  }
-
-  export default class Database {
-    constructor(filename: string, options?: { readonly?: boolean; fileMustExist?: boolean });
-    readonly name: string;
-    pragma(statement: string): unknown;
-    exec(sql: string): void;
-    prepare<TBind = unknown>(sql: string): Statement<TBind>;
-    transaction<TArgs extends unknown[]>(fn: (...args: TArgs) => unknown): Transaction<TArgs>;
+  type SqliteDatabase = {
+    prepare(sql: string): SqlitePrepareResult;
     close(): void;
-  }
+  };
+
+  type SqliteConstructor = new (filename: string, options?: unknown) => SqliteDatabase;
+
+  const Sqlite: SqliteConstructor;
+  export default Sqlite;
 }

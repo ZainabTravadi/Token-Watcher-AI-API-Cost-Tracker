@@ -1,5 +1,4 @@
 import { getDatabase } from "../db/database";
-import fs from "node:fs";
 
 /**
  * Delete telemetry older than the provided cutoff (days) in batches.
@@ -16,7 +15,7 @@ export async function runTelemetryRetention(options: { days: number; batchSize?:
 
   let totalDeleted = 0;
   while (true) {
-    const ids = db.prepare("SELECT id FROM requests WHERE timestamp < ? ORDER BY timestamp ASC LIMIT ?;").all(cutoff, batchSize) as Array<{ id: number }>;
+    const ids = await db.prepare("SELECT id FROM requests WHERE timestamp < ? ORDER BY timestamp ASC LIMIT ?;").all<{ id: number }>(cutoff, batchSize);
     if (!ids || ids.length === 0) break;
 
     if (dryRun) {
@@ -25,10 +24,8 @@ export async function runTelemetryRetention(options: { days: number; batchSize?:
       break;
     }
 
-    const placeholders = ids.map(() => "?").join(",");
-    const stmt = db.prepare(`DELETE FROM requests WHERE id IN (${placeholders})`);
-    const result = stmt.run(...ids.map((r) => r.id));
-    totalDeleted += result.changes ?? 0;
+    const result = await db.query("DELETE FROM requests WHERE id = ANY($1::bigint[])", [ids.map((r) => r.id)]);
+    totalDeleted += result.rowCount ?? 0;
 
     // Yield to the event loop to avoid long blocking
     await new Promise((res) => setTimeout(res, 50));

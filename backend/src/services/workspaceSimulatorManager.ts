@@ -1,7 +1,6 @@
 import { telemetryBus } from "./telemetryBus";
 import { ingestTelemetry } from "./ingestService";
 import { getWorkspaceApiKey, regenerateWorkspaceApiKey } from "./authService";
-import { getTelemetryCount } from "./telemetryRepository";
 import type { IngestTelemetryInput } from "../types/ingest";
 
 const ROUTES = ["/api/chat", "/api/search", "/api/summarize", "/api/autocomplete", "/api/agents"] as const;
@@ -21,7 +20,7 @@ const activeSimulators = new Map<string, WorkspaceSimulator>();
  * Start a telemetry simulator for a specific workspace
  * Generates realistic traffic that flows through the ingest API
  */
-export function startWorkspaceSimulator(workspaceId: string): boolean {
+export async function startWorkspaceSimulator(workspaceId: string): Promise<boolean> {
   // Don't start duplicate simulators
   if (activeSimulators.has(workspaceId)) {
     return false;
@@ -29,8 +28,8 @@ export function startWorkspaceSimulator(workspaceId: string): boolean {
 
   try {
     // Get or create API key for this workspace
-    if (!getWorkspaceApiKey(workspaceId)) {
-      const regeneratedKey = regenerateWorkspaceApiKey(workspaceId);
+    if (!await getWorkspaceApiKey(workspaceId)) {
+      const regeneratedKey = await regenerateWorkspaceApiKey(workspaceId);
       if (!regeneratedKey) {
         console.warn(`[workspace-simulator] Failed to create API key for workspace ${workspaceId}`);
         return false;
@@ -39,7 +38,7 @@ export function startWorkspaceSimulator(workspaceId: string): boolean {
 
     // Generate initial batch of records (seeding)
     const initialBatch = generateTelemetryBatch(workspaceId, 3, true);
-    ingestTelemetry(workspaceId, initialBatch);
+    await ingestTelemetry(workspaceId, initialBatch);
     telemetryBus.emitSeeded(workspaceId, initialBatch.length);
 
     // Start interval to generate more records every 2-5 seconds
@@ -47,11 +46,14 @@ export function startWorkspaceSimulator(workspaceId: string): boolean {
       try {
         const batch = generateTelemetryBatch(workspaceId, 1, false);
         if (batch.length > 0) {
-          ingestTelemetry(workspaceId, batch);
-          const simulator = activeSimulators.get(workspaceId);
-          if (simulator) {
-            simulator.recordsGenerated += batch.length;
-          }
+          void ingestTelemetry(workspaceId, batch).then(() => {
+            const simulator = activeSimulators.get(workspaceId);
+            if (simulator) {
+              simulator.recordsGenerated += batch.length;
+            }
+          }).catch((error) => {
+            console.error(`[workspace-simulator:${workspaceId}]`, error);
+          });
         }
       } catch (error) {
         console.error(`[workspace-simulator:${workspaceId}]`, error);

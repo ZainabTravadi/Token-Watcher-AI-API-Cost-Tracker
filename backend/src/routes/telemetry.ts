@@ -12,27 +12,26 @@ export function createTelemetryRouter(): Router {
     "/telemetry",
     authenticateUser,
     requireOwnedWorkspace,
-    (request: AuthenticatedRequest, response) => {
+    async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
         return;
       }
       const limit = Number.parseInt(String(request.query.limit ?? "100"), 10);
       response.json({
-        data: listLatestTelemetry(
+        data: await listLatestTelemetry(
           request.workspaceId,
           Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100
         ),
-        simulator: getSimulatorStatus()
+        simulator: await getSimulatorStatus()
       });
     }
   );
 
-  router.get("/telemetry/status", (_request, response) => {
-    response.json({ data: getSimulatorStatus() });
+  router.get("/telemetry/status", async (_request, response) => {
+    response.json({ data: await getSimulatorStatus() });
   });
 
-  // Get workspace-specific simulator status
   router.get(
     "/telemetry/workspace-simulator-status",
     authenticateUser,

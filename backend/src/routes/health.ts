@@ -4,14 +4,11 @@ import { getTelemetryCount } from "../services/telemetryRepository";
 import { getDatabase } from "../db/database";
 import { getActiveSseConnections } from "../services/realtimeStreamService";
 import { getActiveSimulatorCount } from "../services/workspaceSimulatorManager";
-import fs from "node:fs";
-import path from "node:path";
-import { getDatabasePath } from "../db/database";
 
 // Get version from package.json at runtime
 function getVersionInfo() {
   try {
-    const packageJson = require("../../../package.json");
+    const packageJson = require("../../package.json");
     const version = packageJson.version || "1.0.0";
     
     // Determine release channel based on environment or version suffix
@@ -37,13 +34,13 @@ function getVersionInfo() {
 }
 
 // Get database diagnostics
-function getDatabaseStatus() {
+async function getDatabaseStatus() {
   try {
     const db = getDatabase();
     const startTime = Date.now();
     
     // Quick health check query
-    const result = db.prepare("SELECT 1").get();
+    await db.prepare("SELECT 1").get();
     const responseTime = Date.now() - startTime;
     
     return {
@@ -63,21 +60,11 @@ function getDatabaseStatus() {
 export function createHealthRouter(): Router {
   const router = Router();
 
-  router.get("/health", (_request: Request, response: Response) => {
+  router.get("/health", async (_request: Request, response: Response) => {
     const config = getConfig();
-    const telemetryCount = getTelemetryCount();
+    const telemetryCount = await getTelemetryCount();
     const versionInfo = getVersionInfo();
-    const dbStatus = getDatabaseStatus();
-    let dbFileSize = null;
-    let walFileSize = null;
-    try {
-      const dbPath = getDatabasePath();
-      const walPath = `${dbPath}-wal`;
-      dbFileSize = fs.statSync(dbPath).size;
-      walFileSize = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0;
-    } catch {
-      // ignore
-    }
+    const dbStatus = await getDatabaseStatus();
 
     // Map node environment to display environment
     const envMap: Record<string, "development" | "staging" | "production"> = {
@@ -100,11 +87,7 @@ export function createHealthRouter(): Router {
         port: config.port
       },
       database: dbStatus,
-      dbFiles: {
-        path: getDatabasePath(),
-        fileSizeBytes: dbFileSize,
-        walSizeBytes: walFileSize,
-      },
+      dbFiles: null,
       operational: {
         activeSseConnections: getActiveSseConnections(),
         activeSimulators: getActiveSimulatorCount(),

@@ -23,7 +23,7 @@ TokenWatch takes a different approach: instrument your application directly, kee
 - SDK: telemetry collection, batching, and delivery.
 
 This repository contains three main parts:
-- `backend/` — TypeScript Express API, authentication, ingest pipeline, analytics, and SSE streaming backed by SQLite (better-sqlite3).
+- `backend/` — TypeScript Express API, authentication, ingest pipeline, analytics, and SSE streaming backed by PostgreSQL (Neon-compatible).
 - `frontend/` — React + Vite dashboard for workspace-level analytics, request logs and realtime updates.
 - `sdk/` — Small, dependency‑free TypeScript SDK that batches and delivers telemetry to the ingest API.
 
@@ -146,7 +146,7 @@ See [Deployment Guide](./DEPLOYMENT.md) for local development commands, hosted d
 
 ### Frontend Deployment
 
-The frontend should point at the backend API URL, which then reads and writes SQLite.
+The frontend should point at the backend API URL. The backend stores telemetry in PostgreSQL and exposes the ingest API for dashboard and SDK traffic.
 
 - Local frontend example: use `http://localhost:3001` for the backend.
 - Production frontend example: use your deployed backend URL.
@@ -156,7 +156,7 @@ The frontend should point at the backend API URL, which then reads and writes SQ
  ## What the system does (short)
 
  - SDK queues events in memory, batches them, and POSTs to `POST /api/ingest` with `X-API-Key`.
- - Backend authenticates the key, normalizes telemetry, writes the `requests` table in SQLite (WAL), emits an event on `telemetryBus`, and invalidates analytics caches.
+ - Backend authenticates the key, normalizes telemetry, writes the `requests` table in PostgreSQL, emits an event on `telemetryBus`, and invalidates analytics caches.
  - Frontend subscribes to `/api/telemetry/stream` (SSE) for workspace-scoped live rows and refreshes analytics views.
 
  ## Core features
@@ -170,15 +170,15 @@ The frontend should point at the backend API URL, which then reads and writes SQ
 
 - [`backend/src/routes`](./backend/src/routes) — API routes and ingestion endpoints.
 - [`backend/src/services`](./backend/src/services) — analytics, realtime streaming, ingestion, and workspace logic.
-- [`backend/src/db`](./backend/src/db) — SQLite setup, schema, and migrations.
+- [`backend/src/db`](./backend/src/db) — PostgreSQL schema, connection, and migrations.
 - [`sdk/src`](./sdk/src) — SDK client, transport, batching, and runtime state.
 - [`frontend/src/pages`](./frontend/src/pages) — dashboard pages and analytics views.
 - [`frontend/src/components`](./frontend/src/components) — reusable UI and realtime dashboard components.
 
  ## Operations & maintenance (short)
 
- - Health endpoint: `GET /api/health` — returns DB sizes and operational counters (active SSE connections, simulators).
- - Backups: `node dist/scripts/backup.js` (uses SQLite online backup API). Backups saved to `backend/data/backups`.
+ - Health endpoint: `GET /api/health` — returns database connection status and operational counters (active SSE connections, simulators).
+ - Backups: `node dist/scripts/backup.js` uses `pg_dump` and saves SQL dumps to `backend/data/backups`.
  - Retention: `dist/scripts/retention.js` is dry-run by default. Use `TELEMETRY_RETENTION_APPLY=true` to delete.
 
 ## 📚 Next reading

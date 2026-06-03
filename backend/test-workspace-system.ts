@@ -12,7 +12,11 @@
  * 7. Multiple workspace support
  */
 
+import dotenv from "dotenv";
 import http from "http";
+
+// Load environment variables
+dotenv.config();
 
 const API_BASE = "http://localhost:3001";
 
@@ -75,7 +79,9 @@ async function request(
       });
     });
 
-    req.on("error", reject);
+    req.on("error", (err) => {
+      reject(new Error(`HTTP request to ${method} ${path} failed: ${err.message}`));
+    });
     if (body) {
       req.write(JSON.stringify(body));
     }
@@ -88,6 +94,25 @@ function extractCookie(cookies?: string[], name: string = "tokenwatch_auth"): st
   const cookie = cookies.find((c) => c.startsWith(name + "="));
   if (!cookie) return null;
   return cookie.split(";")[0].split("=")[1];
+}
+
+async function waitForServer(maxAttempts = 30, delayMs = 1000): Promise<boolean> {
+  console.log("[TEST] Checking if server is running on " + API_BASE);
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const result = await request("GET", "/api/health");
+      console.log("[TEST] Server is ready!");
+      return true;
+    } catch (err) {
+      if (i < maxAttempts - 1) {
+        console.log(`[TEST] Server not ready, attempt ${i + 1}/${maxAttempts}. Waiting ${delayMs}ms...`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+  }
+  console.error("[TEST] ✗ Server is not running on " + API_BASE);
+  console.error("[TEST] Make sure to start the server with: npm run dev");
+  return false;
 }
 
 async function test(
@@ -110,17 +135,26 @@ async function test(
       data: result.data,
     });
   } catch (err) {
-    error(`Exception: ${err instanceof Error ? err.message : String(err)}`);
+    const fullError = err instanceof Error 
+      ? `${err.message}\n${err.stack}` 
+      : String(err);
+    error(`Exception: ${fullError}`);
     results.push({
       name,
       status: "fail",
-      message: `Exception: ${err instanceof Error ? err.message : String(err)}`,
+      message: `Exception: ${fullError}`,
     });
   }
 }
 
 async function main() {
   console.log("\n=== TokenWatch Multi-Workspace System Test ===\n");
+
+  // Check if server is running
+  const serverReady = await waitForServer();
+  if (!serverReady) {
+    process.exit(1);
+  }
 
   let authToken = "";
   let workspaceId = "";

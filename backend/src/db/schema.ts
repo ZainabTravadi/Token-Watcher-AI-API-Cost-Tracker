@@ -3,9 +3,9 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  last_logout_at INTEGER NOT NULL DEFAULT 0
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  last_logout_at BIGINT NOT NULL DEFAULT 0
 );
 `;
 
@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS workspaces (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   name TEXT NOT NULL,
-  monthly_budget REAL NOT NULL DEFAULT 100,
+  monthly_budget DOUBLE PRECISION NOT NULL DEFAULT 100,
   webhook_url TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 `;
@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
   key_hash TEXT NOT NULL UNIQUE,
-  created_at INTEGER NOT NULL,
-  revoked_at INTEGER,
+  created_at BIGINT NOT NULL,
+  revoked_at BIGINT,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 `;
@@ -37,30 +37,30 @@ export const createWorkspaceSettingsTableSql = `
 CREATE TABLE IF NOT EXISTS workspace_settings (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL UNIQUE,
-  alert_on_high_cost BOOLEAN NOT NULL DEFAULT 1,
-  alert_on_errors BOOLEAN NOT NULL DEFAULT 1,
-  alert_cost_threshold REAL NOT NULL DEFAULT 50,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
+  alert_on_high_cost BOOLEAN NOT NULL DEFAULT true,
+  alert_on_errors BOOLEAN NOT NULL DEFAULT true,
+  alert_cost_threshold DOUBLE PRECISION NOT NULL DEFAULT 50,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 `;
 
 export const createRequestsTableSql = `
 CREATE TABLE IF NOT EXISTS requests (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   workspace_id TEXT NOT NULL,
-  timestamp INTEGER NOT NULL,
+  timestamp BIGINT NOT NULL,
   route TEXT NOT NULL,
   model TEXT NOT NULL,
   provider TEXT NOT NULL,
   input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0,
   total_tokens INTEGER NOT NULL DEFAULT 0,
-  cost_usd REAL NOT NULL DEFAULT 0,
+  cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
   latency_ms INTEGER NOT NULL DEFAULT 0,
   error TEXT,
-  metadata TEXT,
+  metadata JSONB,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 `;

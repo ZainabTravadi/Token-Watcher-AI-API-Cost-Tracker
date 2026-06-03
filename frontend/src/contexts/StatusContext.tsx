@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   authFetch,
   fetchHealth,
+  API_BASE_URL,
   type HealthResponse,
   type TelemetryStreamStatus,
   formatTelemetryCount,
@@ -171,8 +172,7 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
           throw new Error(`Auth check failed with status ${authResponse.status}`);
         }
 
-        const apiUrl = import.meta.env.VITE_TOKENWATCH_API_URL ?? "http://localhost:3001";
-        const streamUrl = `${apiUrl}/api/telemetry/stream?workspaceId=${encodeURIComponent(workspaceId)}`;
+        const streamUrl = `${API_BASE_URL}/api/telemetry/stream?workspaceId=${encodeURIComponent(workspaceId)}`;
 
         closeSource();
         source = new EventSource(streamUrl, { withCredentials: true });

@@ -2,9 +2,9 @@
 
  Short operational checklist and troubleshooting tips.
 
-## Frontend / Backend / SQLite flow
+## Frontend / Backend / Postgres flow
 
-The frontend talks to the backend API, and the backend reads and writes SQLite.
+The frontend talks to the backend API, and the backend reads and writes PostgreSQL.
 
 - Frontend should use the deployed backend URL in production.
 - Local frontend can use `http://localhost:3001` for the backend.
@@ -22,24 +22,24 @@ The frontend talks to the backend API, and the backend reads and writes SQLite.
 
  ## Health & monitoring
 
- - Health endpoint: `GET /api/health` — inspect `dbFiles.fileSizeBytes`, `dbFiles.walSizeBytes`, and `operational` counters (`activeSseConnections`, `activeSimulators`).
- - Export these metrics to your monitoring system for alerting on WAL growth or connection spikes.
+ - Health endpoint: `GET /api/health` — inspect database connection status and operational counters (`activeSseConnections`, `activeSimulators`).
+ - Export these metrics to your monitoring system for alerting on connection health and traffic spikes.
 
  ## Backups & retention
 
- - Backups: `node dist/scripts/backup.js` (creates consistent snapshot saved to `backend/data/backups`). Copy snapshots to durable storage.
+ - Backups: `node dist/scripts/backup.js` uses `pg_dump` to create consistent SQL dumps saved to `backend/data/backups`. Copy snapshots to durable storage.
  - Retention: use `dist/scripts/retention.js` with `TELEMETRY_RETENTION_DAYS`. The script is dry-run by default; use `TELEMETRY_RETENTION_APPLY=true` to apply deletions.
 
  ## SSE & realtime
 
  - SSE is one-way (server → client). Monitor the number of active connections; ensure load balancers have sensible timeouts and support for long‑lived connections.
 
- ## WAL considerations
+ ## Database considerations
 
- - WAL can grow if checkpoints/backup do not run. Regular backups and occasional checkpoints keep WAL sizes bounded.
+ - For Postgres, ensure regular backups and monitor connection health. Use your provider's managed backup system and care for query latency under load.
 
  ## Troubleshooting
 
  - `429` from `/api/ingest` — indicates client burst limits; tune client batching or spread load.
- - Unexpected WAL growth — ensure backups/checkpoints run and disk I/O is healthy.
+ - Monitor database connection health and backup cadence; for Postgres, use managed provider tooling to avoid long-term query or storage issues.
 

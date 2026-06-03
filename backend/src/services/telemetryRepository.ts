@@ -26,38 +26,39 @@ INSERT INTO requests (
   latency_ms,
   error,
   metadata
-) VALUES (@workspace_id, @timestamp, @route, @model, @provider, @input_tokens, @output_tokens, @total_tokens, @cost_usd, @latency_ms, @error, @metadata);
+) VALUES (@workspace_id, @timestamp, @route, @model, @provider, @input_tokens, @output_tokens, @total_tokens, @cost_usd, @latency_ms, @error, @metadata)
+RETURNING id;
 `;
 
-export function insertTelemetry(record: Omit<TelemetryRecord, "id">): TelemetryRecord {
+export async function insertTelemetry(record: Omit<TelemetryRecord, "id">): Promise<TelemetryRecord> {
   const db = getDatabase();
   const statement = db.prepare(insertTelemetrySql);
 
-  const result = statement.run({ ...record, metadata: record.metadata ?? null });
+  const result = await statement.run({ ...record, metadata: record.metadata ?? null });
 
   return {
-    id: Number(result.lastInsertRowid),
+    id: Number(result.lastInsertId),
     ...record
   };
 }
 
-export function insertTelemetryBatch(records: Array<Omit<TelemetryRecord, "id">>): TelemetryRecord[] {
+export async function insertTelemetryBatch(records: Array<Omit<TelemetryRecord, "id">>): Promise<TelemetryRecord[]> {
   const db = getDatabase();
   const insert = db.prepare(insertTelemetrySql);
-  const transaction = db.transaction((items: Array<Omit<TelemetryRecord, "id">>) =>
-    items.map((item) => {
-      const result = insert.run({ ...item, metadata: item.metadata ?? null });
-      return {
-        id: Number(result.lastInsertRowid),
+  return await db.transaction(async () => {
+    const rows: TelemetryRecord[] = [];
+    for (const item of records) {
+      const result = await insert.run({ ...item, metadata: item.metadata ?? null });
+      rows.push({
+        id: Number(result.lastInsertId),
         ...item
-      };
-    })
-  );
-
-  return transaction(records) as TelemetryRecord[];
+      });
+    }
+    return rows;
+  });
 }
 
-export function listLatestTelemetry(workspaceId: string, limit = 100): TelemetryRow[] {
+export async function listLatestTelemetry(workspaceId: string, limit = 100): Promise<TelemetryRow[]> {
   const db = getDatabase();
   const sql = `
     SELECT
@@ -79,10 +80,10 @@ export function listLatestTelemetry(workspaceId: string, limit = 100): Telemetry
     ORDER BY timestamp DESC, id DESC
     LIMIT ?;
   `;
-  return db.prepare(sql).all(workspaceId, limit) as TelemetryRow[];
+  return (await db.prepare(sql).all<TelemetryRow>(workspaceId, limit)).map(normalizeTelemetryRow);
 }
 
-export function listRequestLog(workspaceId: string, query: RequestLogQuery = {}): RequestLogResponse {
+export async function listRequestLog(workspaceId: string, query: RequestLogQuery = {}): Promise<RequestLogResponse> {
   const db = getDatabase();
   const page = Math.max(1, Math.trunc(query.page ?? 1));
   const limit = Math.min(200, Math.max(1, Math.trunc(query.limit ?? 50)));
@@ -127,7 +128,7 @@ export function listRequestLog(workspaceId: string, query: RequestLogQuery = {})
   }
 
   const countSql = `SELECT COUNT(*) AS count FROM requests ${where};`;
-  const total = db.prepare(countSql).get(...countParams) as { count: number };
+  const total = await db.prepare(countSql).get<{ count: string | number }>(...countParams);
 
   const offset = cursor ? 0 : (page - 1) * limit;
   const logSql = `
@@ -154,23 +155,24 @@ export function listRequestLog(workspaceId: string, query: RequestLogQuery = {})
   `;
 
   const rows = cursor
-    ? (db.prepare(logSql).all(...params, ...cursorParams, limit) as TelemetryRow[])
-    : (db.prepare(logSql).all(...params, limit, offset) as TelemetryRow[]);
+    ? await db.prepare(logSql).all<TelemetryRow>(...params, ...cursorParams, limit)
+    : await db.prepare(logSql).all<TelemetryRow>(...params, limit, offset);
+  const normalizedRows = rows.map(normalizeTelemetryRow);
 
-  const lastRow = rows.at(-1);
+  const lastRow = normalizedRows.at(-1);
   const nextCursor = lastRow ? `${lastRow.timestamp}:${lastRow.id}` : null;
 
   return {
-    data: rows,
+    data: normalizedRows,
     page,
     limit,
-    total: total?.count ?? 0,
-    hasMore: cursor ? rows.length === limit : page * limit < (total?.count ?? 0),
+    total: Number(total?.count ?? 0),
+    hasMore: cursor ? normalizedRows.length === limit : page * limit < Number(total?.count ?? 0),
     nextCursor
   };
 }
 
-export function getAnalyticsSnapshot(workspaceId: string, hours = 24): AnalyticsSnapshot {
+export async function getAnalyticsSnapshot(workspaceId: string, hours = 24): Promise<AnalyticsSnapshot> {
   const db = getDatabase();
   const since = Date.now() - hours * 60 * 60 * 1000;
   const today = startOfToday();
@@ -235,7 +237,7 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
 
   const timelineSql = `
     SELECT
-      CAST(strftime('%Y-%m-%dT%H:00:00Z', datetime(timestamp / 1000, 'unixepoch')) AS TEXT) AS bucket,
+      to_char(date_trunc('hour', to_timestamp(timestamp / 1000.0) AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:00:00"Z"') AS bucket,
       COUNT(*) AS requests,
       COALESCE(SUM(cost_usd), 0) AS cost_usd,
       COALESCE(AVG(latency_ms), 0) AS latency_ms
@@ -245,20 +247,34 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
     ORDER BY bucket ASC;
   `;
 
-  const dimensions = listTelemetryDimensions(workspaceId);
+  const dimensions = await listTelemetryDimensions(workspaceId);
 
-  const overviewRow = db.prepare(overviewSql).get(workspaceId, today) as {
-    requestsToday: number;
-    spendToday: number;
-    avgCostPerRequest: number;
-    errorCount: number;
-    errors429: number;
-    errors500: number;
-  };
+  const overviewRow = await db.prepare(overviewSql).get<{
+    requeststoday: string | number;
+    spendtoday: string | number;
+    avgcostperrequest: string | number;
+    errorcount: string | number;
+    errors429: string | number;
+    errors500: string | number;
+  }>(workspaceId, today);
 
-  const endpoints = db.prepare(endpointSql).all(workspaceId, since) as AnalyticsEndpointRow[];
-  const models = db.prepare(modelSql).all(workspaceId, since) as AnalyticsModelRow[];
-  const recentRaw = db.prepare(recentSql).all(workspaceId) as Array<{
+  const endpoints = (await db.prepare(endpointSql).all<any>(workspaceId, since)).map((row) => ({
+    ...row,
+    requests: Number(row.requests ?? 0),
+    cost_usd: Number(row.cost_usd ?? 0),
+    avg_cost_usd: Number(row.avg_cost_usd ?? 0),
+    avg_latency_ms: Number(row.avg_latency_ms ?? 0)
+  })) as AnalyticsEndpointRow[];
+  const models = (await db.prepare(modelSql).all<any>(workspaceId, since)).map((row) => ({
+    ...row,
+    requests: Number(row.requests ?? 0),
+    tokens: Number(row.tokens ?? 0),
+    input_tokens: Number(row.input_tokens ?? 0),
+    output_tokens: Number(row.output_tokens ?? 0),
+    cost_usd: Number(row.cost_usd ?? 0),
+    avg_latency_ms: Number(row.avg_latency_ms ?? 0)
+  })) as AnalyticsModelRow[];
+  const recentRaw = await db.prepare(recentSql).all<{
     timestamp: number;
     route: string;
     model: string;
@@ -267,11 +283,16 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
     output_tokens: number;
     cost_usd: number;
     error: string | null;
-  }>;
-  const timeline = db.prepare(timelineSql).all(workspaceId, since) as AnalyticsSnapshot["timeline"];
+  }>(workspaceId);
+  const timeline = (await db.prepare(timelineSql).all<any>(workspaceId, since)).map((row) => ({
+    bucket: row.bucket,
+    requests: Number(row.requests ?? 0),
+    cost_usd: Number(row.cost_usd ?? 0),
+    latency_ms: Number(row.latency_ms ?? 0)
+  })) as AnalyticsSnapshot["timeline"];
 
   const recent: AnalyticsRecentRow[] = recentRaw.map((row) => ({
-    ts: new Date(row.timestamp).toISOString().slice(0, 19).replace("T", " "),
+    ts: new Date(Number(row.timestamp)).toISOString().slice(0, 19).replace("T", " "),
     endpoint: row.route as AnalyticsRecentRow["endpoint"],
     model: row.model as AnalyticsRecentRow["model"],
     provider: row.provider as AnalyticsRecentRow["provider"],
@@ -281,11 +302,11 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
     status: row.error ? (row.error.startsWith("HTTP_429") ? "429" : row.error.startsWith("HTTP_500") ? "500" : "ERR") : "200"
   }));
 
-  const requestsToday = overviewRow?.requestsToday ?? 0;
-  const spendToday = overviewRow?.spendToday ?? 0;
-  const avgCostPerRequest = overviewRow?.avgCostPerRequest ?? 0;
-  const errorCount = overviewRow?.errorCount ?? 0;
-  const workspaceBudget = getWorkspace(workspaceId)?.monthly_budget ?? 100;
+  const requestsToday = Number(overviewRow?.requeststoday ?? 0);
+  const spendToday = Number(overviewRow?.spendtoday ?? 0);
+  const avgCostPerRequest = Number(overviewRow?.avgcostperrequest ?? 0);
+  const errorCount = Number(overviewRow?.errorcount ?? 0);
+  const workspaceBudget = (await getWorkspace(workspaceId))?.monthly_budget ?? 100;
 
   return {
     overview: {
@@ -294,8 +315,8 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
       avgCostPerRequest,
       budget: workspaceBudget,
       errorRate: requestsToday > 0 ? errorCount / requestsToday : 0,
-      errors429: overviewRow?.errors429 ?? 0,
-      errors500: overviewRow?.errors500 ?? 0
+      errors429: Number(overviewRow?.errors429 ?? 0),
+      errors500: Number(overviewRow?.errors500 ?? 0)
     },
     endpoints,
     models,
@@ -305,24 +326,25 @@ export function getAnalyticsSnapshot(workspaceId: string, hours = 24): Analytics
   };
 }
 
-export function listTelemetryDimensions(workspaceId: string): TelemetryDimensions {
+export async function listTelemetryDimensions(workspaceId: string): Promise<TelemetryDimensions> {
   const db = getDatabase();
-  const distinct = (column: "model" | "provider" | "route"): string[] =>
-    (db.prepare(`
-      SELECT DISTINCT ${column} AS value
+  const distinct = async (column: "model" | "provider" | "route"): Promise<string[]> =>
+    (await db.prepare(`
+      SELECT ${column} AS value
       FROM requests
       WHERE workspace_id = ? AND ${column} IS NOT NULL AND TRIM(${column}) != ''
-      ORDER BY value COLLATE NOCASE ASC;
-    `).all(workspaceId) as Array<{ value: string }>).map((row) => row.value);
+      GROUP BY ${column}
+      ORDER BY LOWER(${column}) ASC;
+    `).all<{ value: string }>(workspaceId)).map((row) => row.value);
 
   return {
-    models: distinct("model"),
-    providers: distinct("provider"),
-    routes: distinct("route")
+    models: await distinct("model"),
+    providers: await distinct("provider"),
+    routes: await distinct("route")
   };
 }
 
-export function hasTelemetryRows(workspaceId?: string): boolean {
+export async function hasTelemetryRows(workspaceId?: string): Promise<boolean> {
   const db = getDatabase();
   let sql = "SELECT COUNT(*) AS count FROM requests";
   let params: any[] = [];
@@ -332,11 +354,11 @@ export function hasTelemetryRows(workspaceId?: string): boolean {
     params = [workspaceId];
   }
 
-  const row = db.prepare(sql + ";").get(...params) as { count: number };
-  return row.count > 0;
+  const row = await db.prepare(sql + ";").get<{ count: string | number }>(...params);
+  return Number(row?.count ?? 0) > 0;
 }
 
-export function getTelemetryCount(workspaceId?: string): number {
+export async function getTelemetryCount(workspaceId?: string): Promise<number> {
   const db = getDatabase();
   let sql = "SELECT COUNT(*) AS count FROM requests";
   let params: any[] = [];
@@ -346,12 +368,30 @@ export function getTelemetryCount(workspaceId?: string): number {
     params = [workspaceId];
   }
 
-  const row = db.prepare(sql + ";").get(...params) as { count: number };
-  return row.count;
+  const row = await db.prepare(sql + ";").get<{ count: string | number }>(...params);
+  return Number(row?.count ?? 0);
 }
 
 function startOfToday(): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   return now.getTime();
+}
+
+function normalizeTelemetryRow(row: TelemetryRow): TelemetryRow {
+  const metadata = row.metadata && typeof row.metadata !== "string" ? JSON.stringify(row.metadata) : row.metadata;
+  const normalized: TelemetryRow = {
+    ...row,
+    id: Number(row.id),
+    timestamp: Number(row.timestamp),
+    input_tokens: Number(row.input_tokens),
+    output_tokens: Number(row.output_tokens),
+    total_tokens: Number(row.total_tokens),
+    cost_usd: Number(row.cost_usd),
+    latency_ms: Number(row.latency_ms),
+  };
+  if (metadata !== undefined) {
+    normalized.metadata = metadata;
+  }
+  return normalized;
 }

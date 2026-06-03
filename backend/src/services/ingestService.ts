@@ -9,7 +9,7 @@ export interface IngestResult {
   inserted: number;
 }
 
-export function ingestTelemetry(workspaceId: string, input: IngestTelemetryInput | IngestTelemetryInput[]): IngestResult {
+export async function ingestTelemetry(workspaceId: string, input: IngestTelemetryInput | IngestTelemetryInput[]): Promise<IngestResult> {
   const records = Array.isArray(input) ? input : [input];
   if (records.length === 0) {
     throw new Error("Telemetry batch must contain at least one record.");
@@ -21,8 +21,8 @@ export function ingestTelemetry(workspaceId: string, input: IngestTelemetryInput
   const normalized = records.map((r) => normalizeTelemetryInput(workspaceId, r));
 
   const inserted = normalized.length === 1
-    ? [insertTelemetry(normalized[0] as Omit<TelemetryRecord, "id">)]
-    : insertTelemetryBatch(normalized as Array<Omit<TelemetryRecord, "id">>);
+    ? [await insertTelemetry(normalized[0] as Omit<TelemetryRecord, "id">)]
+    : await insertTelemetryBatch(normalized as Array<Omit<TelemetryRecord, "id">>);
 
   for (const row of inserted) {
     telemetryBus.emitTelemetry(row);

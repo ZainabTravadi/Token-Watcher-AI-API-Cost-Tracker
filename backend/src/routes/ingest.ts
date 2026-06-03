@@ -15,7 +15,7 @@ export function createIngestRouter(): Router {
   return router;
 }
 
-function handleIngest(request: AuthenticatedRequest, response: any): void {
+async function handleIngest(request: AuthenticatedRequest, response: any): Promise<void> {
   const ip = String(request.ip ?? request.headers["x-forwarded-for"] ?? "local");
   const rateState = checkRateLimit(ip);
 
@@ -26,7 +26,7 @@ function handleIngest(request: AuthenticatedRequest, response: any): void {
 
   try {
     const payload = validateTelemetryPayload(request.body);
-    const result = ingestTelemetry(request.workspaceId!, payload);
+    const result = await ingestTelemetry(request.workspaceId!, payload);
 
     console.info(`[ingest] ip=${ip} workspace=${request.workspaceId} count=${result.inserted} path=${request.originalUrl ?? request.path}`);
 

@@ -11,7 +11,7 @@ export interface AuthenticatedRequest extends Request {
 /**
  * Middleware to authenticate user via JWT cookie or Authorization header only
  */
-export function authenticateUser(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+export async function authenticateUser(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const config = getConfig();
     
@@ -32,7 +32,7 @@ export function authenticateUser(req: AuthenticatedRequest, res: Response, next:
       return;
     }
 
-    const lastLogoutAt = getUserLastLogoutAt(decoded.userId);
+    const lastLogoutAt = await getUserLastLogoutAt(decoded.userId);
     if (decoded.iat * 1000 < lastLogoutAt) {
       res.status(401).json({ error: "Invalid token" });
       return;
@@ -48,7 +48,7 @@ export function authenticateUser(req: AuthenticatedRequest, res: Response, next:
 /**
  * Middleware to authenticate SDK via API key header
  */
-export function authenticateSDK(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+export async function authenticateSDK(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const apiKey = req.headers["x-api-key"];
 
@@ -57,7 +57,7 @@ export function authenticateSDK(req: AuthenticatedRequest, res: Response, next: 
       return;
     }
 
-    const result = verifyApiKey(apiKey);
+    const result = await verifyApiKey(apiKey);
     if (!result) {
       res.status(401).json({ error: "Invalid API key" });
       return;
@@ -83,7 +83,7 @@ export function attachWorkspaceOptional(req: AuthenticatedRequest, res: Response
   next();
 }
 
-export function requireOwnedWorkspace(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+export async function requireOwnedWorkspace(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   if (!req.userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -95,14 +95,14 @@ export function requireOwnedWorkspace(req: AuthenticatedRequest, res: Response, 
     (typeof req.query.workspaceId === "string" ? req.query.workspaceId : undefined) ||
     (typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined);
 
-  const workspaceId = requestedWorkspaceId || getUserWorkspaces(req.userId)[0]?.id;
+  const workspaceId = requestedWorkspaceId || (await getUserWorkspaces(req.userId))[0]?.id;
 
   if (!workspaceId) {
     res.status(400).json({ error: "Workspace ID required" });
     return;
   }
 
-  const workspace = getWorkspace(workspaceId, req.userId);
+  const workspace = await getWorkspace(workspaceId, req.userId);
   if (!workspace) {
     res.status(403).json({ error: "Forbidden" });
     return;

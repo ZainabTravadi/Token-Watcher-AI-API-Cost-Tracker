@@ -1,6 +1,4 @@
-import fs from "node:fs";
-import path from "node:path";
-import Database from "better-sqlite3";
+import { Pool, PoolClient, type QueryResult, type QueryResultRow } from "pg";
 import { getConfig } from "../config/env";
 import {
   createRequestsRouteIndexSql,
@@ -21,91 +19,188 @@ import {
   createWorkspaceSettingsTableSql
 } from "./schema";
 
-let database: Database | null = null;
-
-function applySchema(db: Database): void {
-  // Auth tables
-  db.exec(createUsersTableSql);
-  db.exec(createUsersEmailIndexSql);
-  db.exec(createWorkspacesTableSql);
-  db.exec(createWorkspacesUserIdIndexSql);
-  db.exec(createApiKeysTableSql);
-  db.exec(createApiKeysWorkspaceIdIndexSql);
-  db.exec(createApiKeysHashActiveIndexSql);
-  db.exec(createWorkspaceSettingsTableSql);
-  
-  ensureSchemaUpdates(db);
-  
-  // Requests table
-  db.exec(createRequestsTableSql);
-  db.exec(createRequestsTimestampIndexSql);
-  db.exec(createRequestsWorkspaceTimestampIndexSql);
-  db.exec(createRequestsRouteIndexSql);
-  db.exec(createRequestsWorkspaceRouteTimestampIndexSql);
-  db.exec(createRequestsWorkspaceModelTimestampIndexSql);
-  db.exec(createRequestsWorkspaceErrorTimestampIndexSql);
-  db.exec(createRequestsWorkspaceIndexSql);
+export interface RunResult {
+  changes: number;
+  lastInsertId: number | bigint;
+  rows: unknown[];
 }
 
-function ensureSchemaUpdates(db: Database): void {
-  const usersInfo = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
-  if (!usersInfo.some((column) => column.name === "last_logout_at")) {
-    db.exec("ALTER TABLE users ADD COLUMN last_logout_at INTEGER NOT NULL DEFAULT 0");
-  }
-
-  const requestsInfo = db.prepare("PRAGMA table_info(requests)").all() as Array<{ name: string }>;
-  if (requestsInfo.length > 0 && !requestsInfo.some((column) => column.name === "metadata")) {
-    db.exec("ALTER TABLE requests ADD COLUMN metadata TEXT");
-  }
+interface PreparedStatement {
+  get<T extends QueryResultRow = QueryResultRow>(...params: unknown[]): Promise<T | undefined>;
+  all<T extends QueryResultRow = QueryResultRow>(...params: unknown[]): Promise<T[]>;
+  run(...params: unknown[]): Promise<RunResult>;
 }
 
-export function getDatabase(): Database {
-  if (database) {
-    return database;
-  }
+export interface PgDatabase {
+  name: string;
+  pool: Pool;
+  exec(sql: string): Promise<void>;
+  query<T extends QueryResultRow = QueryResultRow>(sql: string, params?: unknown[]): Promise<QueryResult<T>>;
+  prepare(sql: string): PreparedStatement;
+  transaction<T>(callback: () => Promise<T>): Promise<T>;
+}
 
+let database: PgDatabase | null = null;
+let activeTransactionClient: PoolClient | null = null;
+
+async function applySchema(db: PgDatabase): Promise<void> {
+  await db.exec(createUsersTableSql);
+  await db.exec(createUsersEmailIndexSql);
+  await db.exec(createWorkspacesTableSql);
+  await db.exec(createWorkspacesUserIdIndexSql);
+  await db.exec(createApiKeysTableSql);
+  await db.exec(createApiKeysWorkspaceIdIndexSql);
+  await db.exec(createApiKeysHashActiveIndexSql);
+  await db.exec(createWorkspaceSettingsTableSql);
+
+  await ensureSchemaUpdates(db);
+
+  await db.exec(createRequestsTableSql);
+  await db.exec(createRequestsTimestampIndexSql);
+  await db.exec(createRequestsWorkspaceTimestampIndexSql);
+  await db.exec(createRequestsRouteIndexSql);
+  await db.exec(createRequestsWorkspaceRouteTimestampIndexSql);
+  await db.exec(createRequestsWorkspaceModelTimestampIndexSql);
+  await db.exec(createRequestsWorkspaceErrorTimestampIndexSql);
+  await db.exec(createRequestsWorkspaceIndexSql);
+}
+
+async function ensureSchemaUpdates(db: PgDatabase): Promise<void> {
+  await db.exec("ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS last_logout_at BIGINT NOT NULL DEFAULT 0");
+  await db.exec("ALTER TABLE IF EXISTS requests ADD COLUMN IF NOT EXISTS metadata JSONB");
+  await db.exec("ALTER TABLE IF EXISTS users ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN updated_at TYPE BIGINT, ALTER COLUMN last_logout_at TYPE BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS workspaces ALTER COLUMN monthly_budget TYPE DOUBLE PRECISION, ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN updated_at TYPE BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS api_keys ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN revoked_at TYPE BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ALTER COLUMN alert_cost_threshold TYPE DOUBLE PRECISION, ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN updated_at TYPE BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS requests ALTER COLUMN timestamp TYPE BIGINT, ALTER COLUMN cost_usd TYPE DOUBLE PRECISION");
+}
+
+function createDatabase(): PgDatabase {
   const config = getConfig();
-  const resolvedDatabasePath = path.resolve(config.databasePath);
-  fs.mkdirSync(path.dirname(resolvedDatabasePath), { recursive: true });
+  const pool = new Pool({ connectionString: config.databaseUrl });
 
-  database = new Database(resolvedDatabasePath);
-  database.pragma("journal_mode = WAL");
-  database.pragma("foreign_keys = ON");
-  // Set a busy timeout to reduce immediate failures when the DB is briefly locked
-  database.pragma("busy_timeout = 5000");
-  // Perform a checkpoint on startup to keep WAL from growing unbounded across restarts
-  try {
-    // TRUNCATE will try to move WAL contents back into the main DB and shrink the WAL
-    database.pragma("wal_checkpoint(TRUNCATE)");
-  } catch {
-    // Best-effort only
+  const query = async <T extends QueryResultRow = QueryResultRow>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> => {
+    if (activeTransactionClient) {
+      return activeTransactionClient.query<T>(sql, params);
+    }
+    return pool.query<T>(sql, params);
+  };
+
+  const db: PgDatabase = {
+    name: config.databaseUrl.replace(/\/\/([^:]+):[^@]+@/, "//$1:***@"),
+    pool,
+    exec: async (sql: string) => {
+      await query(sql);
+    },
+    query,
+    prepare: (sql: string) => ({
+      get: async <T extends QueryResultRow = QueryResultRow>(...params: unknown[]) => {
+        const { text, values } = translateSql(sql, params);
+        const result = await query<T>(text, values);
+        return result.rows[0] as T | undefined;
+      },
+      all: async <T extends QueryResultRow = QueryResultRow>(...params: unknown[]) => {
+        const { text, values } = translateSql(sql, params);
+        const result = await query<T>(text, values);
+        return result.rows as T[];
+      },
+      run: async (...params: unknown[]) => {
+        const { text, values } = translateSql(sql, params);
+        const result = await query(text, values);
+        const row = result.rows[0] as { id?: number | bigint } | undefined;
+        return {
+          changes: result.rowCount ?? 0,
+          lastInsertId: row?.id ?? 0,
+          rows: result.rows
+        };
+      }
+    }),
+    transaction: async <T>(callback: () => Promise<T>) => {
+      if (activeTransactionClient) {
+        return callback();
+      }
+      const client = await pool.connect();
+      activeTransactionClient = client;
+      try {
+        await client.query("BEGIN");
+        const result = await callback();
+        await client.query("COMMIT");
+        return result;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        activeTransactionClient = null;
+        client.release();
+      }
+    }
+  };
+
+  return db;
+}
+
+export function getDatabase(): PgDatabase {
+  if (!database) {
+    database = createDatabase();
   }
-  applySchema(database);
-
   return database;
 }
 
-export function initializeDatabase(): void {
-  applySchema(getDatabase());
+export async function initializeDatabase(): Promise<void> {
+  await applySchema(getDatabase());
 }
 
-export function closeDatabase(): void {
+export async function closeDatabase(): Promise<void> {
   if (!database) {
     return;
   }
 
-  try {
-    // Run a checkpoint before closing to flush WAL contents
-    database.pragma("wal_checkpoint(TRUNCATE)");
-  } catch {
-    // ignore
-  }
-
-  database.close();
+  await database.pool.end();
   database = null;
 }
 
 export function getDatabasePath(): string {
-  const config = getConfig();
-  return path.resolve(config.databasePath);
+  return getConfig().databasePath;
+}
+
+function translateSql(sql: string, params: unknown[]): { text: string; values: unknown[] } {
+  const first = params[0];
+  if (isPlainObject(first)) {
+    const values: unknown[] = [];
+    const names = new Map<string, number>();
+    const text = sql.replace(/@([a-zA-Z_][a-zA-Z0-9_]*)/g, (_match, name: string) => {
+      if (!names.has(name)) {
+        names.set(name, values.length + 1);
+        values.push((first as Record<string, unknown>)[name]);
+      }
+      return `$${names.get(name)}`;
+    });
+    return { text, values: values.map(normalizeValue) };
+  }
+
+  let index = 0;
+  const text = sql.replace(/\?/g, () => `$${++index}`);
+  return { text, values: params.map(normalizeValue) };
+}
+
+function normalizeValue(value: unknown): unknown {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (isJsonString(value)) {
+    return value;
+  }
+  return value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isJsonString(value: unknown): value is string {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const trimmed = value.trim();
+  return (trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
 }

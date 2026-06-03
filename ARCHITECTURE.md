@@ -6,7 +6,7 @@
 
  - SDK: dependency‑free TypeScript client that buffers events in a bounded queue, groups them into batches, and delivers to the ingest API with retries and graceful shutdown support. See `sdk/src/transport.ts` and `sdk/src/client.ts`.
  - Backend API: Express application that exposes auth, workspace management, analytics, requests, and ingest endpoints. Key services live in `backend/src/services`.
- - Storage: single SQLite database via `better-sqlite3` in WAL mode. Schema and initialization are in `backend/src/db`.
+ - Storage: single PostgreSQL database. Schema and initialization are in `backend/src/db`.
  - Realtime: lightweight fanout using an in‑process `telemetryBus` EventEmitter and Server‑Sent Events (SSE) per workspace (`realtimeStreamService`).
  - Frontend: React dashboard (Vite) that authorizes users, selects a workspace, opens an SSE connection to `/api/telemetry/stream`, and refreshes analytics views via React Query.
 
@@ -30,10 +30,10 @@
  - We use SSE for one-way server→client updates. Each SSE connection is tied to a workspace and receives only that workspace's events.
  - `telemetryBus` provides a simple in-memory fanout. This design is straightforward, low-latency, and easy to inspect in single-node setups.
 
- ## Why SQLite + WAL (tradeoffs)
+ ## Why PostgreSQL (tradeoffs)
 
- - Reason: minimal operational burden, simple backups (online backup API), and a schema that is easy to inspect and migrate for early customers.
- - Tradeoffs: SQLite is not intended for very high sustained write throughput. For tens-to-low-hundreds of events/sec on modest hardware it's practical with batching; for larger scale use a horizontally scalable datastore (Postgres, Timescale, or a message queue + worker pool).
+ - Reason: managed durability, strong consistency, and compatibility with Neon/Heroku for production deployments.
+ - Tradeoffs: a single-node Postgres deployment still requires monitoring and backups. For higher ingest volume or multi-instance scaling, add a queue/pubsub layer and consider a dedicated analytics store.
 
  ## Safety & rate limiting
 

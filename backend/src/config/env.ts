@@ -5,6 +5,7 @@ dotenv.config();
 export interface AppConfig {
   port: number;
   nodeEnv: string;
+  databaseUrl: string;
   databasePath: string;
   jwtSecret: string;
   corsOrigin: string[];
@@ -22,6 +23,10 @@ function parseBoolean(value?: string): boolean {
   return TRUTHY_BOOLEAN_STRINGS.has(value.trim().toLowerCase());
 }
 
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/u, "");
+}
+
 export function getConfig(): AppConfig {
   const jwtSecret = process.env.JWT_SECRET ?? DEV_JWT_SECRET;
 
@@ -35,8 +40,8 @@ export function getConfig(): AppConfig {
   ];
 
   const corsOrigin = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
-    : defaultCorsOrigins;
+    ? process.env.CORS_ORIGIN.split(",").map((origin) => normalizeOrigin(origin)).filter(Boolean)
+    : defaultCorsOrigins.map(normalizeOrigin);
 
   const nodeEnv = process.env.NODE_ENV ?? "development";
   const enableSimulators = process.env.ENABLE_SIMULATORS !== undefined
@@ -55,6 +60,7 @@ export function getConfig(): AppConfig {
   return {
     port: Number.parseInt(process.env.PORT ?? "3001", 10),
     nodeEnv,
+    databaseUrl: process.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/tokenwatch",
     databasePath: process.env.DATABASE_PATH ?? "./data/tokenwatch.sqlite",
     jwtSecret,
     corsOrigin,

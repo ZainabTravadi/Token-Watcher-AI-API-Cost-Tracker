@@ -1,27 +1,42 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { getDatabasePath, getDatabase } from "../db/database";
+import { spawn } from "node:child_process";
+import { getConfig } from "../config/env";
 
 async function main() {
   const backupDir = process.env.BACKUP_DIR ?? path.resolve(process.cwd(), "data", "backups");
   fs.mkdirSync(backupDir, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const dbPath = getDatabasePath();
-  const filename = `tokenwatch-backup-${timestamp}.sqlite`;
-  const dest = path.join(backupDir, filename);
+  const dest = path.join(backupDir, `tokenwatch-backup-${timestamp}.sql`);
+  const databaseUrl = getConfig().databaseUrl;
 
-  console.log("Starting backup to", dest);
-  const db = getDatabase();
-  try {
-    // better-sqlite3 provides a backup API that safely copies a consistent snapshot
-    await (db as any).backup(dest);
-    console.log("Backup complete:", dest);
-  } catch (err) {
-    console.error("Backup failed:", err);
-    process.exit(1);
-  }
+  console.log("Starting PostgreSQL backup to", dest);
+  await runPgDump(databaseUrl, dest);
+  console.log("Backup complete:", dest);
+}
+
+function runPgDump(databaseUrl: string, dest: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(dest);
+    const child = spawn("pg_dump", [databaseUrl], { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+
+    child.stdout.pipe(output);
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      output.close();
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderr || `pg_dump exited with code ${code}`));
+      }
+    });
+  });
 }
 
 void main().catch((err) => { console.error(err); process.exit(1); });

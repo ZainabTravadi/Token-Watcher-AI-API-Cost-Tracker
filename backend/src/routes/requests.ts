@@ -10,7 +10,7 @@ export function createRequestsRouter(): Router {
     "/requests",
     authenticateUser,
     requireOwnedWorkspace,
-    (request: AuthenticatedRequest, response) => {
+    async (request: AuthenticatedRequest, response) => {
       const page = Number.parseInt(String(request.query.page ?? "1"), 10);
       const limit = Number.parseInt(String(request.query.limit ?? "50"), 10);
       const route = typeof request.query.route === "string" ? request.query.route : undefined;
@@ -24,7 +24,7 @@ export function createRequestsRouter(): Router {
       const cursor = typeof request.query.cursor === "string" ? request.query.cursor : undefined;
 
       response.json({
-        data: listRequestLogRecords(request.workspaceId!, {
+        data: await listRequestLogRecords(request.workspaceId!, {
           page: Number.isFinite(page) ? page : 1,
           limit: Number.isFinite(limit) ? limit : 50,
           ...(route ? { route } : {}),
@@ -36,8 +36,8 @@ export function createRequestsRouter(): Router {
     }
   );
 
-  router.post("/requests", authenticateSDK, (request: AuthenticatedRequest, response) => {
-    const created = ingestTelemetry(request.workspaceId!, validateTelemetryPayload(request.body)).rows;
+  router.post("/requests", authenticateSDK, async (request: AuthenticatedRequest, response) => {
+    const created = (await ingestTelemetry(request.workspaceId!, validateTelemetryPayload(request.body))).rows;
 
     response.status(201).json({ data: created });
   });

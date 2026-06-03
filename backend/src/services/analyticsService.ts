@@ -1,14 +1,18 @@
 import { getAnalyticsSnapshot } from "./telemetryRepository";
 import { getCachedAnalytics, setCachedAnalytics } from "./analyticsCache";
 
-export function buildAnalyticsSnapshot(workspaceId: string): ReturnType<typeof getAnalyticsSnapshot> {
-  return getOrBuildSnapshot(workspaceId, 72);
+export async function buildAnalyticsSnapshot(workspaceId: string): Promise<Awaited<ReturnType<typeof getAnalyticsSnapshot>>> {
+  return await getOrBuildSnapshot(workspaceId, 72);
 }
 
-export function buildRealtimeAnalyticsSnapshot(workspaceId: string): ReturnType<typeof getAnalyticsSnapshot> {
-  return getOrBuildSnapshot(workspaceId, 24);
+export async function buildRealtimeAnalyticsSnapshot(workspaceId: string): Promise<Awaited<ReturnType<typeof getAnalyticsSnapshot>>> {
+  return await getOrBuildSnapshot(workspaceId, 24);
 }
 
-function getOrBuildSnapshot(workspaceId: string, hours: number): ReturnType<typeof getAnalyticsSnapshot> {
-  return getCachedAnalytics(workspaceId, hours) ?? setCachedAnalytics(workspaceId, hours, getAnalyticsSnapshot(workspaceId, hours));
+async function getOrBuildSnapshot(workspaceId: string, hours: number): Promise<Awaited<ReturnType<typeof getAnalyticsSnapshot>>> {
+  const cached = getCachedAnalytics(workspaceId, hours);
+  if (cached) {
+    return cached;
+  }
+  return setCachedAnalytics(workspaceId, hours, await getAnalyticsSnapshot(workspaceId, hours));
 }

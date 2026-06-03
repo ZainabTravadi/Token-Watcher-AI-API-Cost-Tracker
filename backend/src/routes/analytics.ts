@@ -10,12 +10,12 @@ export function createAnalyticsRouter(): Router {
       "/analytics/overview",
       authenticateUser,
       requireOwnedWorkspace,
-    (request: AuthenticatedRequest, response) => {
+    async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
         return;
       }
-      response.json({ data: buildRealtimeAnalyticsSnapshot(request.workspaceId).overview });
+      response.json({ data: (await buildRealtimeAnalyticsSnapshot(request.workspaceId)).overview });
     }
   );
 
@@ -23,12 +23,12 @@ export function createAnalyticsRouter(): Router {
       "/analytics/endpoints",
       authenticateUser,
       requireOwnedWorkspace,
-    (request: AuthenticatedRequest, response) => {
+    async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
         return;
       }
-      response.json({ data: buildRealtimeAnalyticsSnapshot(request.workspaceId).endpoints });
+      response.json({ data: (await buildRealtimeAnalyticsSnapshot(request.workspaceId)).endpoints });
     }
   );
 
@@ -36,12 +36,12 @@ export function createAnalyticsRouter(): Router {
       "/analytics/models",
       authenticateUser,
       requireOwnedWorkspace,
-    (request: AuthenticatedRequest, response) => {
+    async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
         return;
       }
-      response.json({ data: buildRealtimeAnalyticsSnapshot(request.workspaceId).models });
+      response.json({ data: (await buildRealtimeAnalyticsSnapshot(request.workspaceId)).models });
     }
   );
 
@@ -49,12 +49,12 @@ export function createAnalyticsRouter(): Router {
       "/analytics/recent",
       authenticateUser,
       requireOwnedWorkspace,
-    (request: AuthenticatedRequest, response) => {
+    async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
         return;
       }
-      response.json({ data: buildRealtimeAnalyticsSnapshot(request.workspaceId).recent });
+      response.json({ data: (await buildRealtimeAnalyticsSnapshot(request.workspaceId)).recent });
     }
   );
 
@@ -62,12 +62,12 @@ export function createAnalyticsRouter(): Router {
       "/analytics/timeline",
       authenticateUser,
       requireOwnedWorkspace,
-    (request: AuthenticatedRequest, response) => {
+    async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
         return;
       }
-      response.json({ data: buildAnalyticsSnapshot(request.workspaceId).timeline });
+      response.json({ data: (await buildAnalyticsSnapshot(request.workspaceId)).timeline });
     }
   );
 
@@ -75,12 +75,12 @@ export function createAnalyticsRouter(): Router {
       "/analytics/snapshot",
       authenticateUser,
       requireOwnedWorkspace,
-    (request: AuthenticatedRequest, response) => {
+    async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
         return;
       }
-      response.json({ data: buildRealtimeAnalyticsSnapshot(request.workspaceId) });
+      response.json({ data: await buildRealtimeAnalyticsSnapshot(request.workspaceId) });
     }
   );
 

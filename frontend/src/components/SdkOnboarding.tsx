@@ -186,16 +186,11 @@ export function SdkOnboarding({ workspace, compact = false }: { workspace: Works
       <div className="rounded border border-hairline bg-background p-4 text-sm leading-6">
         <p className="font-medium">Troubleshooting</p>
         <div className="mt-3 space-y-4 text-muted-foreground">
-          {troubleshootingItems.map((section) => (
-            <div key={section.title}>
-              <p className="font-medium text-foreground">{section.title}</p>
-              <ul className="mt-1 list-disc pl-5 space-y-1">
-                {section.items.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <ul className="mt-1 list-disc pl-5 space-y-1">
+            {troubleshootingItems.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
       </div>
 

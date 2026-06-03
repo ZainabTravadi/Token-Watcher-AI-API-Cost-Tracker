@@ -2,8 +2,8 @@ import type { CreateRequestRecordInput, RequestRecord } from "../types/requests"
 import { insertTelemetry, listLatestTelemetry, listRequestLog } from "./telemetryRepository";
 import type { TelemetryRecord } from "../types/telemetry";
 
-export function recordRequest(workspaceId: string, input: CreateRequestRecordInput): RequestRecord {
-  return insertTelemetry({
+export async function recordRequest(workspaceId: string, input: CreateRequestRecordInput): Promise<RequestRecord> {
+  return await insertTelemetry({
     workspace_id: workspaceId,
     timestamp: input.timestamp,
     route: input.route,
@@ -19,10 +19,10 @@ export function recordRequest(workspaceId: string, input: CreateRequestRecordInp
   } as unknown as Omit<TelemetryRecord, "id">);
 }
 
-export function listLatestRequests(workspaceId: string, limit = 100): RequestRecord[] {
-  return listLatestTelemetry(workspaceId, limit);
+export async function listLatestRequests(workspaceId: string, limit = 100): Promise<RequestRecord[]> {
+  return await listLatestTelemetry(workspaceId, limit);
 }
 
-export function listRequestLogRecords(workspaceId: string, options: Parameters<typeof listRequestLog>[1] = {}) {
-  return listRequestLog(workspaceId, options);
+export async function listRequestLogRecords(workspaceId: string, options: Parameters<typeof listRequestLog>[1] = {}) {
+  return await listRequestLog(workspaceId, options);
 }

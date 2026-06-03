@@ -74,7 +74,7 @@ export function createWorkspacesRouter(): Router {
    * Create workspace
    * POST /api/workspaces
    */
-  router.post("/", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+  router.post("/", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const nameValidation = validateWorkspaceName(req.body?.name);
       if (!nameValidation.valid) {
@@ -82,18 +82,18 @@ export function createWorkspacesRouter(): Router {
         return;
       }
 
-      const created = createWorkspace(req.userId!, String(req.body?.name ?? "New Workspace").trim());
+      const created = await createWorkspace(req.userId!, String(req.body?.name ?? "New Workspace").trim());
       if (!created) {
         res.status(500).json({ error: "Failed to create workspace" });
         return;
       }
 
-      const apiKey = getWorkspaceApiKey(created.workspace.id);
+      const apiKey = await getWorkspaceApiKey(created.workspace.id);
       res.status(201).json({
         workspace: {
           ...created.workspace,
           apiKey: apiKey ? { id: apiKey.id, created_at: apiKey.created_at, value: created.apiKey } : null,
-          settings: getWorkspaceSettings(created.workspace.id),
+          settings: await getWorkspaceSettings(created.workspace.id),
         },
       });
     } catch (error) {
@@ -106,14 +106,14 @@ export function createWorkspacesRouter(): Router {
    * List workspaces for authenticated user
    * GET /api/workspaces
    */
-  router.get("/", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+  router.get("/", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const workspaces = getUserWorkspaces(req.userId!);
-      const withKeys = workspaces.map((ws) => ({
+      const workspaces = await getUserWorkspaces(req.userId!);
+      const withKeys = await Promise.all(workspaces.map(async (ws) => ({
         ...ws,
-        apiKey: getWorkspaceApiKey(ws.id),
-        settings: getWorkspaceSettings(ws.id),
-      }));
+        apiKey: await getWorkspaceApiKey(ws.id),
+        settings: await getWorkspaceSettings(ws.id),
+      })));
       res.status(200).json(withKeys);
     } catch (error) {
       console.error("[workspaces:list:error]", error);
@@ -125,7 +125,7 @@ export function createWorkspacesRouter(): Router {
    * Get single workspace
    * GET /api/workspaces/:id
    */
-  router.get("/:id", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+  router.get("/:id", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const workspaceId = getWorkspaceId(req);
       if (!workspaceId) {
@@ -133,7 +133,7 @@ export function createWorkspacesRouter(): Router {
         return;
       }
 
-      const workspace = getWorkspace(workspaceId, req.userId!);
+      const workspace = await getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
@@ -141,8 +141,8 @@ export function createWorkspacesRouter(): Router {
 
       res.status(200).json({
         ...workspace,
-        apiKey: getWorkspaceApiKey(workspace.id),
-        settings: getWorkspaceSettings(workspace.id),
+        apiKey: await getWorkspaceApiKey(workspace.id),
+        settings: await getWorkspaceSettings(workspace.id),
       });
     } catch (error) {
       console.error("[workspaces:get:error]", error);
@@ -154,7 +154,7 @@ export function createWorkspacesRouter(): Router {
    * Update workspace settings
    * PUT /api/workspaces/:id
    */
-  router.put("/:id", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+  router.put("/:id", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const workspaceId = getWorkspaceId(req);
       if (!workspaceId) {
@@ -162,7 +162,7 @@ export function createWorkspacesRouter(): Router {
         return;
       }
 
-      const workspace = getWorkspace(workspaceId, req.userId!);
+      const workspace = await getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
@@ -202,7 +202,7 @@ export function createWorkspacesRouter(): Router {
       if (monthly_budget !== undefined) updates.monthly_budget = typeof monthly_budget === "string" ? parseFloat(monthly_budget) : monthly_budget;
       if (webhook_url !== undefined) updates.webhook_url = webhook_url ? (webhook_url as string).trim() : null;
 
-      const updated = updateWorkspace(workspaceId, req.userId!, updates);
+      const updated = await updateWorkspace(workspaceId, req.userId!, updates);
       if (!updated) {
         res.status(500).json({ error: "Failed to update workspace" });
         return;
@@ -210,8 +210,8 @@ export function createWorkspacesRouter(): Router {
 
       res.status(200).json({
         ...updated,
-        apiKey: getWorkspaceApiKey(updated.id),
-        settings: getWorkspaceSettings(updated.id),
+        apiKey: await getWorkspaceApiKey(updated.id),
+        settings: await getWorkspaceSettings(updated.id),
       });
     } catch (error) {
       console.error("[workspaces:update:error]", error);
@@ -223,7 +223,7 @@ export function createWorkspacesRouter(): Router {
    * Update workspace settings (alerts, thresholds, etc.)
    * PUT /api/workspaces/:id/settings
    */
-  router.put("/:id/settings", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+  router.put("/:id/settings", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const workspaceId = getWorkspaceId(req);
       if (!workspaceId) {
@@ -231,7 +231,7 @@ export function createWorkspacesRouter(): Router {
         return;
       }
 
-      const workspace = getWorkspace(workspaceId, req.userId!);
+      const workspace = await getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
@@ -266,7 +266,7 @@ export function createWorkspacesRouter(): Router {
         updates.alert_cost_threshold = threshold;
       }
 
-      const settings = updateWorkspaceSettings(workspaceId, updates);
+      const settings = await updateWorkspaceSettings(workspaceId, updates);
       if (!settings) {
         res.status(500).json({ error: "Failed to update settings" });
         return;
@@ -283,7 +283,7 @@ export function createWorkspacesRouter(): Router {
    * Regenerate API key
    * POST /api/workspaces/:id/api-keys/regenerate
    */
-  router.post("/:id/api-keys/regenerate", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+  router.post("/:id/api-keys/regenerate", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const workspaceId = getWorkspaceId(req);
       if (!workspaceId) {
@@ -291,13 +291,13 @@ export function createWorkspacesRouter(): Router {
         return;
       }
 
-      const workspace = getWorkspace(workspaceId, req.userId!);
+      const workspace = await getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
       }
 
-      const newKey = regenerateWorkspaceApiKey(workspaceId);
+      const newKey = await regenerateWorkspaceApiKey(workspaceId);
       if (!newKey) {
         res.status(500).json({ error: "Failed to regenerate API key" });
         return;
@@ -314,7 +314,7 @@ export function createWorkspacesRouter(): Router {
    * Delete workspace
    * DELETE /api/workspaces/:id
    */
-  router.delete("/:id", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+  router.delete("/:id", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const workspaceId = getWorkspaceId(req);
       if (!workspaceId) {
@@ -322,13 +322,13 @@ export function createWorkspacesRouter(): Router {
         return;
       }
 
-      const workspace = getWorkspace(workspaceId, req.userId!);
+      const workspace = await getWorkspace(workspaceId, req.userId!);
       if (!workspace) {
         res.status(404).json({ error: "Workspace not found" });
         return;
       }
 
-      const success = deleteWorkspace(workspaceId, req.userId!);
+      const success = await deleteWorkspace(workspaceId, req.userId!);
       if (!success) {
         res.status(500).json({ error: "Failed to delete workspace" });
         return;

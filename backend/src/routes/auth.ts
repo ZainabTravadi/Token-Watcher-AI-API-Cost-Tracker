@@ -21,7 +21,7 @@ export function createAuthRouter(): Router {
    * Sign up a new user
    * POST /api/auth/signup
    */
-  router.post("/signup", (req: Request, res: Response) => {
+  router.post("/signup", async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body;
 
@@ -30,27 +30,27 @@ export function createAuthRouter(): Router {
         return;
       }
 
-      const existing = findUserByEmail(email);
+      const existing = await findUserByEmail(email);
       if (existing) {
         res.status(409).json({ error: "User already exists" });
         return;
       }
 
-      const user = createUser(email, password);
+      const user = await createUser(email, password);
       if (!user) {
         res.status(500).json({ error: "Failed to create user" });
         return;
       }
 
       // Create default workspace for new user
-      const creation = createWorkspace(user.id, "Default Workspace");
+      const creation = await createWorkspace(user.id, "Default Workspace");
       if (!creation) {
         res.status(500).json({ error: "Failed to create workspace" });
         return;
       }
 
-      const settings = getWorkspaceSettings(creation.workspace.id);
-      const apiKey = getWorkspaceApiKey(creation.workspace.id);
+      const settings = await getWorkspaceSettings(creation.workspace.id);
+      const apiKey = await getWorkspaceApiKey(creation.workspace.id);
 
       // Create JWT token
       const config = getConfig();
@@ -76,7 +76,7 @@ export function createAuthRouter(): Router {
    * Login
    * POST /api/auth/login
    */
-  router.post("/login", (req: Request, res: Response) => {
+  router.post("/login", async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body;
 
@@ -85,7 +85,7 @@ export function createAuthRouter(): Router {
         return;
       }
 
-      const user = findUserByEmail(email);
+      const user = await findUserByEmail(email);
       if (!user || !verifyPassword(password, user.password_hash)) {
         res.status(401).json({ error: "Invalid credentials" });
         return;
@@ -97,16 +97,16 @@ export function createAuthRouter(): Router {
 
       res.cookie(getAuthCookieName(), token, getAuthCookieOptions(config));
 
-      const workspaces = getUserWorkspaces(user.id);
-      const workspacesWithKeys = workspaces.map((ws) => {
-        const apiKey = getWorkspaceApiKey(ws.id);
-        const settings = getWorkspaceSettings(ws.id);
+      const workspaces = await getUserWorkspaces(user.id);
+      const workspacesWithKeys = await Promise.all(workspaces.map(async (ws) => {
+        const apiKey = await getWorkspaceApiKey(ws.id);
+        const settings = await getWorkspaceSettings(ws.id);
         return {
           ...ws,
           apiKey: apiKey ? { id: apiKey.id, created_at: apiKey.created_at } : null,
           settings,
         };
-      });
+      }));
 
       res.status(200).json({
         user: { id: user.id, email: user.email },
@@ -122,10 +122,10 @@ export function createAuthRouter(): Router {
    * Logout
    * POST /api/auth/logout
    */
-  router.post("/logout", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+  router.post("/logout", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
     const config = getConfig();
     if (req.userId) {
-      setUserLastLogoutAt(req.userId, Date.now());
+      await setUserLastLogoutAt(req.userId, Date.now());
     }
     res.clearCookie(getAuthCookieName(), getAuthClearCookieOptions(config));
     res.status(200).json({ ok: true });
@@ -135,25 +135,25 @@ export function createAuthRouter(): Router {
    * Get current user info
    * GET /api/auth/me
    */
-  router.get("/me", authenticateUser, (req: AuthenticatedRequest, res: Response) => {
+  router.get("/me", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const user = findUserById(req.userId!);
+      const user = await findUserById(req.userId!);
       if (!user) {
         res.status(404).json({ error: "User not found" });
         return;
       }
 
       // Get user's workspaces with API key info
-      const workspaces = getUserWorkspaces(user.id);
-      const workspacesWithKeys = workspaces.map((ws) => {
-        const apiKey = getWorkspaceApiKey(ws.id);
-        const settings = getWorkspaceSettings(ws.id);
+      const workspaces = await getUserWorkspaces(user.id);
+      const workspacesWithKeys = await Promise.all(workspaces.map(async (ws) => {
+        const apiKey = await getWorkspaceApiKey(ws.id);
+        const settings = await getWorkspaceSettings(ws.id);
         return {
           ...ws,
           apiKey: apiKey ? { id: apiKey.id, created_at: apiKey.created_at } : null,
           settings,
         };
-      });
+      }));
 
       res.status(200).json({
         user: { id: user.id, email: user.email, created_at: user.created_at },

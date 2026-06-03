@@ -4,9 +4,9 @@ Short, practical deployment notes for a single-node TokenWatch instance.
 
 ## Frontend Deployment Flow
 
-Frontend → Backend API → SQLite.
+Frontend → Backend API → PostgreSQL.
 
-- The frontend should point to the backend API URL, not directly to SQLite.
+- The frontend should point to the backend API URL.
 - Local frontend example: use the local backend URL at [http://localhost:3001](http://localhost:3001).
 - Production frontend example: use your deployed backend URL.
 - SSE endpoint requirements: the backend must expose `/api/telemetry/stream` and keep the connection open for workspace-scoped realtime updates.
@@ -48,7 +48,7 @@ npm run dev
 
 - Set `NODE_ENV=production`.
 - Set a strong `JWT_SECRET`.
-- Set `DATABASE_PATH` to your production SQLite path.
+- Set `DATABASE_URL` to your production Postgres connection string (Neon/Heroku Postgres).
 - Store API keys server-side and keep them out of the browser bundle.
 
 ### Frontend
@@ -60,10 +60,9 @@ npm run dev
  ## Environment
 
  - Copy `.env.example` → `.env` and set values for production.
- - Required in production: `NODE_ENV=production`, `JWT_SECRET` (strong, 32+ chars).
+ - Required in production: `NODE_ENV=production`, `JWT_SECRET` (strong, 32+ chars), `DATABASE_URL`.
  - Recommended vars:
 	 - `PORT` (default 3001)
-	 - `DATABASE_PATH` (default ./data/tokenwatch.sqlite)
 	 - `TELEMETRY_RETENTION_DAYS` (optional)
 
 ## Hosted Deployment Checklist
@@ -95,11 +94,11 @@ After deployment verify:
  NODE_ENV=production JWT_SECRET="<secret>" node dist/main.js
  ```
 
- Health endpoint: `GET /api/health` — reports DB file sizes and operational counters (active SSE connections, simulators).
+ Health endpoint: `GET /api/health` — reports database connection status and operational counters (active SSE connections, simulators).
 
  ## Backups
 
- - Create a consistent SQLite snapshot:
+ - Create a consistent PostgreSQL snapshot using the backup helper:
 
  ```bash
  cd backend
@@ -129,8 +128,8 @@ After deployment verify:
  - The ingest API has a per‑IP burst limiter for safety; tune client batching (`batchSize`, `flushInterval`) rather than disabling safeguards.
  - Simulators: disabled in production by default. Enable via `ENABLE_SIMULATORS=true` only for controlled environments.
 
- ## When to scale beyond SQLite
+ ## When to scale beyond the current architecture
 
- - If sustained write traffic or analytic needs grow beyond single-node capabilities, introduce a queue and move storage to Postgres or a managed analytics store.
+ - If sustained write traffic or analytic needs grow beyond single-node capabilities, introduce a queue and consider a more scalable Postgres deployment or a managed analytics store.
 
 

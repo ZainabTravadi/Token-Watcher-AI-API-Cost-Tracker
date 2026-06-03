@@ -1,0 +1,2 @@
+release: npm run db:init
+web: npm start
