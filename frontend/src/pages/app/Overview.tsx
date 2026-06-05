@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
+import { BudgetAlertCard } from "@/components/BudgetAlertCard";
 import { Stat } from "@/components/Stat";
 import { DataTable } from "@/components/DataTable";
 import { RequestDetailDrawer } from "@/components/RequestDetailDrawer";
@@ -115,6 +116,14 @@ export default function Overview() {
           value={`${budgetUsedPercent}%`}
           sub={`spent ${fmtUSD(overview.spendToday)} · remaining ${fmtUSD(budgetRemaining)} · projected ${fmtUSD(projectedMonthlySpend)}/mo`}
           bar={{ value: overview.spendToday, max: overview.budget, label: overview.budget > 0 ? `${fmtUSD(budgetRemaining)} left` : "no budget set" }}
+        />
+      </div>
+
+      <div className="mt-8">
+        <BudgetAlertCard
+          spendToday={overview.spendToday}
+          monthlyBudget={overview.budget}
+          alertThresholdPercent={Number(currentWorkspace?.settings?.alert_cost_threshold) || undefined}
         />
       </div>
 
