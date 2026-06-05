@@ -127,20 +127,9 @@ function statusIcon(status: BudgetAlertStatus) {
   }
 }
 
-function statusTone(status: BudgetAlertStatus): string {
-  switch (status) {
-    case "budget-exceeded":
-      return "border-destructive/30 bg-destructive/5 text-destructive";
-    case "threshold-reached":
-      return "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400";
-    case "near-threshold":
-      return "border-yellow-500/30 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400";
-    case "healthy":
-      return "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400";
-    case "unavailable":
-      return "border-muted-foreground/20 bg-muted/30 text-muted-foreground";
-  }
-}
+// The visual tone for the header is intentionally neutral so the
+// `Badge` component (which uses the design system tokens) communicates
+// the status color. Keep header styling consistent with other cards.
 
 function statusBadgeVariant(status: BudgetAlertStatus): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
@@ -163,8 +152,8 @@ export function BudgetAlertCard({ spendToday, monthlyBudget, alertThresholdPerce
   const thresholdLabel = `${state.alertThresholdPercent}%`;
 
   return (
-    <Card className={cn("overflow-hidden border-hairline/80 shadow-sm", className)} data-status={state.status}>
-      <CardHeader className={cn("space-y-4 border-b border-hairline/60", statusTone(state.status))}>
+    <Card className={cn("overflow-hidden border border-hairline shadow-sm", className)} data-status={state.status}>
+      <CardHeader className={cn("space-y-4 border-b border-hairline/60") }>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2 font-serif text-xl">
@@ -184,19 +173,19 @@ export function BudgetAlertCard({ spendToday, monthlyBudget, alertThresholdPerce
 
       <CardContent className="space-y-6 py-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-md border border-hairline/60 bg-background/60 p-4">
+          <div className="rounded border border-hairline bg-background p-4">
             <div className="label-mono mb-1">Current spend</div>
             <div className="font-serif text-2xl num">{fmtUSD(state.spendToday)}</div>
           </div>
-          <div className="rounded-md border border-hairline/60 bg-background/60 p-4">
+          <div className="rounded border border-hairline bg-background p-4">
             <div className="label-mono mb-1">Monthly budget</div>
             <div className="font-serif text-2xl num">{fmtUSD(state.monthlyBudget)}</div>
           </div>
-          <div className="rounded-md border border-hairline/60 bg-background/60 p-4">
+          <div className="rounded border border-hairline bg-background p-4">
             <div className="label-mono mb-1">Usage</div>
             <div className="font-serif text-2xl num">{usageLabel}</div>
           </div>
-          <div className="rounded-md border border-hairline/60 bg-background/60 p-4">
+          <div className="rounded border border-hairline bg-background p-4">
             <div className="label-mono mb-1">Alert threshold</div>
             <div className="font-serif text-2xl num">{thresholdLabel}</div>
           </div>
@@ -207,7 +196,7 @@ export function BudgetAlertCard({ spendToday, monthlyBudget, alertThresholdPerce
             <span>Budget usage</span>
             <span>{state.statusDescription}</span>
           </div>
-          <Progress value={state.progressPercent} className={cn("h-2", state.status === "budget-exceeded" ? "bg-destructive/10" : undefined)} />
+          <Progress value={state.progressPercent} className="h-2" />
           <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
             <span>{state.statusLabel}</span>
             <span>{state.usagePercent === null ? "Budget unavailable" : `${Math.round(state.usagePercent)}% of budget used`}</span>
