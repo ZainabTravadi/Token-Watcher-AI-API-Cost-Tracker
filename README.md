@@ -192,3 +192,24 @@ The frontend should point at the backend API URL. The backend stores telemetry i
 
  - Use `NODE_ENV=production` and a strong `JWT_SECRET` for non-local deployments.
  - Keep workspace API keys secret and server-side; do not embed them in browser shipping code.
+
+## 🤝 Contributors
+
+Big thanks to everyone helping make **TokenWatcher** better 🚀
+
+<div align="center">
+
+<a href="https://github.com/EvolutionX-10" title="@EvolutionX-10">
+  <img src="https://images.weserv.nl/?url=avatars.githubusercontent.com/EvolutionX-10&h=80&w=80&fit=cover&mask=circle" />
+</a>
+
+<br>
+
+<a href="https://github.com/EvolutionX-10">
+  <b>EvolutionX-10</b>
+</a>
+
+</div>
+
+Every contribution - whether code, documentation, testing, or feedback—is greatly appreciated ❤️
+
