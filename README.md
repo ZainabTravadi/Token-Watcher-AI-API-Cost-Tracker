@@ -195,7 +195,7 @@ The frontend should point at the backend API URL. The backend stores telemetry i
 
 ## 🤝 Contributors
 
-Big thanks to everyone helping make **TokenWatcher** better 🚀
+Big thanks to everyone helping make **TokenWatch** better 🚀
 
 <div align="center">
 
