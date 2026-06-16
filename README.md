@@ -94,17 +94,19 @@ A compact architecture diagram showing the main data flows. See the full [Archit
 
 ```mermaid
 flowchart LR
-	subgraph App[Application]
-		SDK[SDK (in-app)]
-	end
-	Backend[Backend API]
-	DB[(PostgreSQL)]
-	Frontend[Dashboard]
 
-	SDK -->|POST /api/ingest| Backend
-	Backend --> DB
-	Backend -->|SSE /api/telemetry/stream| Frontend
-	Frontend -->|API calls| Backend
+    subgraph Application
+        SDK["TokenWatch SDK"]
+    end
+
+    Backend["Backend API"]
+    DB[("PostgreSQL")]
+    Frontend["Dashboard"]
+
+    SDK -->|POST /api/ingest| Backend
+    Backend --> DB
+    Backend -->|SSE /api/telemetry/stream| Frontend
+    Frontend -->|API calls| Backend
 ```
 
 The README below is a concise developer guide: quick start, core concepts, and where to look for implementation details.
