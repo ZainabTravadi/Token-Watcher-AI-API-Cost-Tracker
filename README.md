@@ -1,4 +1,64 @@
-# TokenWatch — AI telemetry and cost monitoring
+# TokenWatch
+
+Lightweight AI telemetry, analytics, and cost monitoring for production systems.
+
+<!-- Badges -->
+[![License](https://img.shields.io/github/license/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker?style=social)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker?style=social)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/commits)
+[![CI](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/actions)
+[![npm version](https://img.shields.io/npm/v/@zn_/tokenwatch)](https://www.npmjs.com/package/@zn_/tokenwatch)
+
+---
+
+## Feature highlights
+
+- 🤖 AI: Integrates with model usage to capture requests, tokens, and costs.
+- 📊 Analytics: Workspace-level dashboards, recent activity, and endpoints.
+- 💰 Cost Monitoring: Per-model and per-request cost tracking and summaries.
+- ⚡ Realtime Telemetry: SSE streaming for live dashboard updates.
+- 🔑 API Keys: Workspace-scoped API keys with rotation guidance.
+- 🛰️ Monitoring: Health checks, backups, and retention tooling.
+- 🚀 Deployment: Deployment guides and Procfile for hosted deployments.
+- 📦 SDK: Lightweight TypeScript SDK for easy instrumentation.
+- 🏢 Workspaces: Isolated analytics per workspace for multi-tenant use.
+
+---
+
+## Technology stack
+
+- TypeScript (backend, SDK, frontend)
+- Node.js / npm
+- Express (backend)
+- React + Vite (frontend)
+- PostgreSQL (Neon-compatible), SQLite (local development)
+- Server-Sent Events (SSE) for realtime streaming
+- Vitest for tests
+- Heroku and Vercel deployment workflows
+
+---
+
+## Table of Contents
+
+- [What is TokenWatch?](#what-is-tokenwatch)
+- [How TokenWatch Works](#how-tokenwatch-works)
+- [Feature highlights](#feature-highlights)
+- [Quick Start](#5-minute-quick-start)
+- [Installation](#installation)
+- [API Key Lifecycle](#api-key-lifecycle)
+- [Troubleshooting](#troubleshooting)
+- [Deployment](#deployment)
+- [Operations & maintenance (short)](#operations--maintenance-short)
+- [Important directories](#-important-directories)
+- [Next reading](#-next-reading)
+- [Architecture](#architecture)
+- [Getting help / community](#getting-help--community)
+- [Contributing](#contributing)
+- [Contributors](#-contributors)
+
+---
 
 ## What is TokenWatch?
 
@@ -26,6 +86,26 @@ This repository contains three main parts:
 - `backend/` — TypeScript Express API, authentication, ingest pipeline, analytics, and SSE streaming backed by PostgreSQL (Neon-compatible).
 - `frontend/` — React + Vite dashboard for workspace-level analytics, request logs and realtime updates.
 - `sdk/` — Small, dependency‑free TypeScript SDK that batches and delivers telemetry to the ingest API.
+
+ 
+## Architecture
+
+A compact architecture diagram showing the main data flows. See the full [Architecture Guide](./ARCHITECTURE.md) for details.
+
+```mermaid
+flowchart LR
+	subgraph App[Application]
+		SDK[SDK (in-app)]
+	end
+	Backend[Backend API]
+	DB[(PostgreSQL)]
+	Frontend[Dashboard]
+
+	SDK -->|POST /api/ingest| Backend
+	Backend --> DB
+	Backend -->|SSE /api/telemetry/stream| Frontend
+	Frontend -->|API calls| Backend
+```
 
 The README below is a concise developer guide: quick start, core concepts, and where to look for implementation details.
 
@@ -187,6 +267,13 @@ The frontend should point at the backend API URL. The backend stores telemetry i
 - 🚀 [Deployment Guide](./DEPLOYMENT.md) — production setup, environment variables, backups, and retention.
 - 🛠️ [Operations Guide](./OPS.md) — monitoring, maintenance, health checks, and operational workflows.
 - 📦 [SDK Documentation](./sdk/README.md) — installation, examples, batching, retries, and production usage.
+
+## Getting help / community
+
+- Report bugs or request features: [Issues](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/issues)
+- Ask questions and discuss usage: [Discussions](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/discussions)
+
+> **Note:** When opening an issue, include reproduction steps and relevant logs to help triage quickly.
 
  ## Contributing
 
