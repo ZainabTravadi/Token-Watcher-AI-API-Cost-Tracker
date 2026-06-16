@@ -3,11 +3,7 @@
 Lightweight AI telemetry, analytics, and cost monitoring for production systems.
 
 <!-- Badges -->
-[![License](https://img.shields.io/github/license/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/blob/main/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker?style=social)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker?style=social)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/issues)
-[![Last Commit](https://img.shields.io/github/last-commit/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/commits)
 [![CI](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/actions)
 [![npm version](https://img.shields.io/npm/v/@zn_/tokenwatch)](https://www.npmjs.com/package/@zn_/tokenwatch)
 
@@ -100,7 +96,7 @@ flowchart LR
     end
 
     Backend["Backend API"]
-    DB[("PostgreSQL")]
+	DB[(PostgreSQL)]
     Frontend["Dashboard"]
 
     SDK -->|POST /api/ingest| Backend
