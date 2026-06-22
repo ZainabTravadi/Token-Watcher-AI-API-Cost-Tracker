@@ -306,6 +306,12 @@ export async function fetchRequestLog(workspaceId?: string, query: RequestLogQue
   return response.data;
 }
 
+export async function fetchAiInsights(workspaceId?: string): Promise<{ insights: string[]; summary?: any }> {
+  const body = workspaceId ? { workspaceId } : {};
+  const response = await apiFetch<{ data: { insights: string[]; summary?: any } }>(`/api/ai/insights`, { method: "POST", body: JSON.stringify(body) });
+  return response.data;
+}
+
 export function useHealthQuery() {
   return useQuery<HealthResponse>({
     queryKey: ["health"],

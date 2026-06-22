@@ -6,6 +6,7 @@ import { createHealthRouter } from "./health";
 import { createIngestRouter } from "./ingest";
 import { createRequestsRouter } from "./requests";
 import { createTelemetryRouter } from "./telemetry";
+import { createAiRouter } from "./ai";
 
 export function registerRoutes(app: Express): void {
   app.use("/", createHealthRouter());
@@ -23,4 +24,6 @@ export function registerRoutes(app: Express): void {
   app.use("/", createIngestRouter());
   app.use("/api", createAnalyticsRouter());
   app.use("/api", createTelemetryRouter());
+  // AI insights
+  app.use("/api", createAiRouter());
 }

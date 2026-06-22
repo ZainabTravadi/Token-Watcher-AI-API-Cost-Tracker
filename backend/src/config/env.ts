@@ -1,6 +1,9 @@
 import dotenv from "dotenv";
+import path from "path";
 
-dotenv.config();
+// Load backend/.env by default so modules using getConfig()
+// get the same DATABASE_URL regardless of the current working directory.
+dotenv.config({ path: path.resolve(__dirname, "..", "..", ".env") });
 
 export interface AppConfig {
   port: number;

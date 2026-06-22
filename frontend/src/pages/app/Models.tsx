@@ -10,6 +10,7 @@ import {
   type TelemetryRow,
   useAnalyticsSnapshotQuery,
   useTelemetryRowsQuery,
+  fetchAiInsights,
 } from "@/lib/api";
 import { fmtCompactNum, fmtLatency, fmtNum, fmtUSD } from "@/lib/data";
 
@@ -202,6 +203,25 @@ export default function Models() {
   const totalTokens = filteredRows.reduce((sum, row) => sum + row.tokens, 0);
   const totalCost = filteredRows.reduce((sum, row) => sum + row.cost_usd, 0);
 
+  // AI Insights state
+  const [insights, setInsights] = useState<string[] | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  async function handleGenerateInsights() {
+    if (!currentWorkspace?.id) return;
+    setAiError(null);
+    setAiLoading(true);
+    try {
+      const result = await fetchAiInsights(currentWorkspace.id);
+      setInsights(result.insights ?? []);
+    } catch (err: any) {
+      setAiError(err?.message ?? "Failed to generate insights");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
   return (
     <>
       <AppLayout title="Models" meta={`${filteredRows.length} models tracked`}>
@@ -268,6 +288,35 @@ export default function Models() {
             <div className="font-serif text-3xl num">{fmtUSD(totalCost)}</div>
           </div>
         </div>
+
+        <section className="mb-6 border-t border-hairline pt-6">
+          <div className="flex items-center justify-between">
+            <h2 className="label-mono">AI Insights</h2>
+            <div>
+              <button
+                onClick={handleGenerateInsights}
+                disabled={aiLoading || !currentWorkspace?.id}
+                className="rounded border border-hairline bg-primary px-3 py-1 text-sm text-white disabled:opacity-60"
+              >
+                {aiLoading ? "Generating…" : "Generate Insights"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            {aiError && <div className="text-negative text-sm">{aiError}</div>}
+            {!aiError && !insights && <div className="text-sm text-muted-foreground">No insights yet — click Generate Insights to analyze workspace usage.</div>}
+            {insights && (
+              <ul className="mt-3 space-y-2">
+                {insights.map((ins, idx) => (
+                  <li key={idx} className="rounded border border-hairline bg-background px-3 py-2 text-sm">
+                    {ins}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
 
         {!hasRows ? (
           <div className="mt-8 border-t border-hairline py-8 text-center text-sm text-muted-foreground">
