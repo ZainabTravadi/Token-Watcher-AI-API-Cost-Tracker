@@ -1,22 +1,58 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import Drawer from "@/components/Drawer";
 import { DataTable } from "@/components/DataTable";
 import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ChartPanel } from "@/components/overview/ChartPanel";
+import { DateRangeFilter } from "@/components/overview/DateRangeFilter";
+import { ExportButton, type ExportRow } from "@/components/overview/ExportButton";
+import { GlobalFilters, type FilterOptionGroup } from "@/components/overview/GlobalFilters";
+import { KpiCard } from "@/components/overview/KpiCard";
+import { HealthScorePanel, type HealthScore } from "@/components/analytics/HealthScorePanel";
+import { RecommendationPanel, type Recommendation } from "@/components/analytics/RecommendationPanel";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  type AnalyticsModelRow,
-  type TelemetryRow,
-  useAnalyticsSnapshotQuery,
-  useTelemetryRowsQuery,
-  fetchAiInsights,
-} from "@/lib/api";
-import { fmtCompactNum, fmtLatency, fmtNum, fmtUSD } from "@/lib/data";
+import { type TelemetryRow, useAnalyticsSnapshotQuery, useTelemetryRowsQuery } from "@/lib/api";
+import { fmtCompactNum, fmtLatency, fmtNum, fmtPercent, fmtUSD } from "@/lib/data";
+import { formatLocalDateInputValue } from "@/lib/dates";
+import { getRowStatus, useOverviewFilters } from "@/hooks/useOverviewFilters";
+
+const EntityCharts = lazy(() => import("@/components/analytics/EntityCharts").then((module) => ({
+  default: function Charts({ data }: { data: TrendPoint[] }) {
+    return (
+      <>
+        <ChartPanel title="Daily Cost Trend" meta="filtered range" isEmpty={data.length === 0}>
+          <module.CostTrendChart data={data} />
+        </ChartPanel>
+        <ChartPanel title="Token Usage Trend" meta="input + output" isEmpty={data.length === 0}>
+          <module.TokenTrendChart data={data} />
+        </ChartPanel>
+        <ChartPanel title="Latency Trend" meta="average ms" isEmpty={data.length === 0}>
+          <module.LatencyTrendChart data={data} />
+        </ChartPanel>
+        <ChartPanel title="Error Rate Trend" meta="daily" isEmpty={data.length === 0}>
+          <module.ErrorRateTrendChart data={data} />
+        </ChartPanel>
+      </>
+    );
+  },
+})));
 
 type SortKey = "cost" | "requests" | "tokens" | "latency";
-type ProviderFilter = "all" | AnalyticsModelRow["provider"];
-type ModelKey = `${AnalyticsModelRow["model"]}::${AnalyticsModelRow["provider"]}`;
+type TrendPoint = { label: string; cost_usd: number; requests: number; tokens: number; latency_ms: number; error_rate: number };
+type ModelAggregate = {
+  key: string;
+  model: string;
+  provider: string;
+  requests: number;
+  tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  avg_latency_ms: number;
+  error_rate: number;
+};
 
 const SORT_LABELS: Record<SortKey, string> = {
   cost: "Total cost",
@@ -25,164 +61,178 @@ const SORT_LABELS: Record<SortKey, string> = {
   latency: "Avg latency",
 };
 
-function getModelKey(row: Pick<AnalyticsModelRow, "model" | "provider">): ModelKey {
-  return `${row.model}::${row.provider}`;
+function buildTrend(rows: TelemetryRow[]): TrendPoint[] {
+  const buckets = new Map<string, TrendPoint & { latencyTotal: number; errors: number }>();
+  for (const row of rows) {
+    const key = formatLocalDateInputValue(new Date(row.timestamp));
+    const current = buckets.get(key) ?? {
+      label: new Date(`${key}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      cost_usd: 0,
+      requests: 0,
+      tokens: 0,
+      latency_ms: 0,
+      error_rate: 0,
+      latencyTotal: 0,
+      errors: 0,
+    };
+    current.cost_usd += row.cost_usd;
+    current.requests += 1;
+    current.tokens += row.total_tokens;
+    current.latencyTotal += row.latency_ms;
+    current.errors += row.error ? 1 : 0;
+    buckets.set(key, current);
+  }
+  return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, point]) => ({
+    label: point.label,
+    cost_usd: point.cost_usd,
+    requests: point.requests,
+    tokens: point.tokens,
+    latency_ms: point.requests > 0 ? point.latencyTotal / point.requests : 0,
+    error_rate: point.requests > 0 ? point.errors / point.requests : 0,
+  }));
 }
 
-function isErrorRow(row: TelemetryRow): boolean {
-  return Boolean(row.error);
+function aggregateModels(rows: TelemetryRow[]): ModelAggregate[] {
+  const grouped = new Map<string, ModelAggregate & { latencyTotal: number; errors: number }>();
+  for (const row of rows) {
+    const key = `${row.model}::${row.provider}`;
+    const current = grouped.get(key) ?? {
+      key,
+      model: row.model,
+      provider: row.provider,
+      requests: 0,
+      tokens: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: 0,
+      avg_latency_ms: 0,
+      error_rate: 0,
+      latencyTotal: 0,
+      errors: 0,
+    };
+    current.requests += 1;
+    current.tokens += row.total_tokens;
+    current.input_tokens += row.input_tokens;
+    current.output_tokens += row.output_tokens;
+    current.cost_usd += row.cost_usd;
+    current.latencyTotal += row.latency_ms;
+    current.errors += row.error ? 1 : 0;
+    grouped.set(key, current);
+  }
+  return [...grouped.values()].map((row) => ({
+    ...row,
+    avg_latency_ms: row.requests > 0 ? row.latencyTotal / row.requests : 0,
+    error_rate: row.requests > 0 ? row.errors / row.requests : 0,
+  }));
 }
 
-function getProviderLabel(provider: AnalyticsModelRow["provider"]): string {
-  return provider;
+function score(value: number, badAt: number): number {
+  return Math.max(0, Math.min(100, 100 - (value / badAt) * 100));
 }
 
-function getProviderBadgeClass(_provider: AnalyticsModelRow["provider"]): string {
-  return "border-hairline bg-secondary/40 text-muted-foreground";
+function buildRecommendations(rows: TelemetryRow[], models: ModelAggregate[]): Recommendation[] {
+  if (rows.length === 0) return [];
+  const totalCost = rows.reduce((sum, row) => sum + row.cost_usd, 0);
+  const avgLatency = rows.reduce((sum, row) => sum + row.latency_ms, 0) / rows.length;
+  const avgTokens = rows.reduce((sum, row) => sum + row.total_tokens, 0) / rows.length;
+  const top = [...models].sort((a, b) => b.cost_usd - a.cost_usd)[0];
+  const slowest = [...models].sort((a, b) => b.avg_latency_ms - a.avg_latency_ms)[0];
+  const recs: Recommendation[] = [];
+
+  if (top) {
+    recs.push({
+      title: `Review ${top.model} usage`,
+      detail: "Route high-volume or low-complexity prompts to a faster economy model such as Gemini Flash when quality allows.",
+      impact: "Model routing",
+      savingsUsd: totalCost * 0.18,
+      efficiencyGain: 0.12,
+    });
+  }
+  if (avgTokens > 2500) {
+    recs.push({ title: "Reduce max tokens", detail: "Average token volume is high. Lower max output tokens and trim repeated context.", impact: "Token control", savingsUsd: totalCost * 0.12, efficiencyGain: 0.09 });
+  }
+  if (avgLatency > 1800 || slowest) {
+    recs.push({ title: "Use streaming for slower models", detail: `Streaming can improve perceived latency, especially around ${slowest?.model ?? "high-latency models"}.`, impact: "Latency", efficiencyGain: 0.08 });
+  }
+  recs.push({ title: "Cache repeated prompts", detail: "Cache deterministic system prompts, retrieval results, and stable few-shot context.", impact: "Caching", savingsUsd: totalCost * 0.1, efficiencyGain: 0.07 });
+  recs.push({ title: "Batch small requests", detail: "Batch low-priority analysis requests to reduce overhead and smooth provider throughput.", impact: "Throughput", efficiencyGain: 0.06 });
+  return recs.slice(0, 5);
 }
 
 export default function Models() {
   const { currentWorkspace } = useAuth();
   const analytics = useAnalyticsSnapshotQuery(currentWorkspace?.id);
   const telemetry = useTelemetryRowsQuery(currentWorkspace?.id);
-  const [selectedKey, setSelectedKey] = useState<ModelKey | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("cost");
 
-  const rows = useMemo(() => analytics.data?.models ?? [], [analytics.data?.models]);
-  const providerOptions = useMemo(() => analytics.data?.dimensions.providers ?? [], [analytics.data?.dimensions.providers]);
+  const rows = telemetry.data ?? [];
+  const { dateRange, filters, filteredRows, setDateRange, setFilter, clearFilters } = useOverviewFilters(rows, currentWorkspace?.id);
 
-  const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    const result = rows.filter((row) => {
-      const matchesProvider = providerFilter === "all" || row.provider === providerFilter;
-      const matchesSearch =
-        !query ||
-        row.model.toLowerCase().includes(query) ||
-        row.provider.toLowerCase().includes(query);
-
-      return matchesProvider && matchesSearch;
-    });
-
-    return [...result].sort((left, right) => {
-      const leftValue =
-        sortKey === "cost"
-          ? left.cost_usd
-          : sortKey === "requests"
-            ? left.requests
-            : sortKey === "tokens"
-              ? left.tokens
-              : left.avg_latency_ms;
-      const rightValue =
-        sortKey === "cost"
-          ? right.cost_usd
-          : sortKey === "requests"
-            ? right.requests
-            : sortKey === "tokens"
-              ? right.tokens
-              : right.avg_latency_ms;
-
-      if (rightValue !== leftValue) {
-        return rightValue - leftValue;
-      }
-
-      const modelCompare = left.model.localeCompare(right.model);
-      if (modelCompare !== 0) {
-        return modelCompare;
-      }
-
-      return left.provider.localeCompare(right.provider);
-    });
-  }, [providerFilter, rows, search, sortKey]);
-
-  useEffect(() => {
-    if (!selectedKey) {
-      return;
-    }
-
-    const stillVisible = rows.some((row) => getModelKey(row) === selectedKey);
-    if (!stillVisible) {
-      setSelectedKey(null);
-    }
-  }, [rows, selectedKey]);
-
-  useEffect(() => {
-    if (providerFilter !== "all" && !providerOptions.includes(providerFilter)) {
-      setProviderFilter("all");
-    }
-  }, [providerFilter, providerOptions]);
-
-  const selectedRow = selectedKey ? rows.find((row) => getModelKey(row) === selectedKey) ?? null : null;
+  const filterGroups = useMemo<FilterOptionGroup[]>(() => {
+    const dimensions = analytics.data?.dimensions;
+    const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    return [
+      { key: "provider", label: "Provider", options: unique([...(dimensions?.providers ?? []), ...rows.map((row) => row.provider)]) },
+      { key: "model", label: "Model", options: unique([...(dimensions?.models ?? []), ...rows.map((row) => row.model)]) },
+      { key: "workspace", label: "Workspace", options: unique([currentWorkspace?.id ?? "", ...rows.map((row) => row.workspace_id)]) },
+      { key: "status", label: "Status", options: ["200", "429", "500", "ERR"] },
+    ];
+  }, [analytics.data?.dimensions, currentWorkspace?.id, rows]);
 
   const modelRows = useMemo(() => {
-    const visible = selectedRow
-      ? (telemetry.data ?? []).filter((row) => row.model === selectedRow.model && row.provider === selectedRow.provider)
-      : [];
+    const query = search.trim().toLowerCase();
+    const result = aggregateModels(filteredRows).filter((row) => !query || row.model.toLowerCase().includes(query) || row.provider.toLowerCase().includes(query));
+    return result.sort((left, right) => {
+      const leftValue = sortKey === "cost" ? left.cost_usd : sortKey === "requests" ? left.requests : sortKey === "tokens" ? left.tokens : left.avg_latency_ms;
+      const rightValue = sortKey === "cost" ? right.cost_usd : sortKey === "requests" ? right.requests : sortKey === "tokens" ? right.tokens : right.avg_latency_ms;
+      return rightValue - leftValue || left.model.localeCompare(right.model);
+    });
+  }, [filteredRows, search, sortKey]);
 
-    return visible.sort((left, right) => right.timestamp - left.timestamp || right.id - left.id);
-  }, [selectedRow, telemetry.data]);
-
-  const detail = useMemo(() => {
-    if (!selectedRow) {
-      return null;
-    }
-
-    const endpointBreakdown = new Map<string, { route: string; requests: number; cost: number; tokens: number; latency: number }>();
-    const recentErrors: TelemetryRow[] = [];
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let totalTokens = 0;
-    let totalCost = 0;
-    let totalLatency = 0;
-
-    for (const row of modelRows) {
-      inputTokens += row.input_tokens ?? 0;
-      outputTokens += row.output_tokens ?? 0;
-      totalTokens += row.total_tokens ?? row.input_tokens + row.output_tokens;
-      totalCost += row.cost_usd ?? 0;
-      totalLatency += row.latency_ms ?? 0;
-
-      const endpointKey = row.route;
-      const existing = endpointBreakdown.get(endpointKey) ?? {
-        route: endpointKey,
-        requests: 0,
-        cost: 0,
-        tokens: 0,
-        latency: 0,
-      };
-
-      existing.requests += 1;
-      existing.cost += row.cost_usd ?? 0;
-      existing.tokens += row.total_tokens ?? row.input_tokens + row.output_tokens;
-      existing.latency += row.latency_ms ?? 0;
-      endpointBreakdown.set(endpointKey, existing);
-
-      if (isErrorRow(row)) {
-        recentErrors.push(row);
-      }
-    }
-
-    const endpoints = [...endpointBreakdown.values()].sort((left, right) => right.cost - left.cost || left.route.localeCompare(right.route));
-    const requestCount = modelRows.length;
-
-    return {
-      requestCount,
-      inputTokens,
-      outputTokens,
-      totalTokens,
-      totalCost,
-      avgLatency: requestCount > 0 ? totalLatency / requestCount : 0,
-      endpoints,
-      recentErrors: recentErrors.slice(0, 8),
-      recentActivity: modelRows.slice(0, 8),
-    };
-  }, [modelRows, selectedRow]);
+  const selected = selectedKey ? modelRows.find((row) => row.key === selectedKey) ?? null : null;
+  const selectedHistory = selected ? filteredRows.filter((row) => row.model === selected.model && row.provider === selected.provider).sort((a, b) => b.timestamp - a.timestamp) : [];
+  const trend = useMemo(() => buildTrend(filteredRows), [filteredRows]);
+  const totalCost = filteredRows.reduce((sum, row) => sum + row.cost_usd, 0);
+  const totalTokens = filteredRows.reduce((sum, row) => sum + row.total_tokens, 0);
+  const avgLatency = filteredRows.length > 0 ? filteredRows.reduce((sum, row) => sum + row.latency_ms, 0) / filteredRows.length : 0;
+  const errorRate = filteredRows.length > 0 ? filteredRows.filter((row) => row.error).length / filteredRows.length : 0;
+  const recommendations = useMemo(() => buildRecommendations(filteredRows, modelRows), [filteredRows, modelRows]);
+  const healthScores: HealthScore[] = [
+    { label: "Health Score", value: (score(avgLatency, 4000) + score(errorRate, 0.2)) / 2, detail: "Blends latency and reliability." },
+    { label: "Cost Score", value: score(filteredRows.length ? totalCost / filteredRows.length : 0, 0.08), detail: "Lower average request cost scores higher." },
+    { label: "Latency Score", value: score(avgLatency, 4000), detail: "Based on average model latency." },
+    { label: "Reliability Score", value: score(errorRate, 0.2), detail: "Based on visible request errors." },
+    { label: "AI Efficiency", value: (score(avgLatency, 4000) + score(errorRate, 0.2) + score(filteredRows.length ? totalCost / filteredRows.length : 0, 0.08)) / 3, detail: "Composite cost, speed, and reliability." },
+  ];
+  const providerRows = aggregateModels(filteredRows).reduce<Record<string, { provider: string; requests: number; tokens: number; cost_usd: number; latency: number; errors: number }>>((acc, row) => {
+    acc[row.provider] ??= { provider: row.provider, requests: 0, tokens: 0, cost_usd: 0, latency: 0, errors: 0 };
+    acc[row.provider].requests += row.requests;
+    acc[row.provider].tokens += row.tokens;
+    acc[row.provider].cost_usd += row.cost_usd;
+    acc[row.provider].latency += row.avg_latency_ms * row.requests;
+    acc[row.provider].errors += Math.round(row.error_rate * row.requests);
+    return acc;
+  }, {});
+  const exportRows: ExportRow[] = filteredRows.map((row) => ({
+    timestamp: row.timestamp,
+    workspace_id: row.workspace_id,
+    provider: row.provider,
+    model: row.model,
+    endpoint: row.route,
+    status: getRowStatus(row),
+    requests: 1,
+    input_tokens: row.input_tokens,
+    output_tokens: row.output_tokens,
+    total_tokens: row.total_tokens,
+    cost_usd: row.cost_usd,
+    latency_ms: row.latency_ms,
+  }));
 
   if (analytics.isLoading || telemetry.isLoading) {
     return (
-      <AppLayout title="Models" meta="loading analytics…">
+      <AppLayout title="Models" meta="loading analytics...">
         <PageLoadingState rows={5} />
       </AppLayout>
     );
@@ -191,307 +241,113 @@ export default function Models() {
   if (analytics.isError || telemetry.isError || !analytics.data) {
     return (
       <AppLayout title="Models" meta="backend unavailable">
-        <PageErrorState
-          title="Could not load models"
-          message="The analytics API is unavailable. Start the backend and reload the dashboard."
-        />
+        <PageErrorState title="Could not load models" message="The analytics API is unavailable. Start the backend and reload the dashboard." />
       </AppLayout>
     );
   }
 
-  const hasRows = filteredRows.length > 0;
-  const totalTokens = filteredRows.reduce((sum, row) => sum + row.tokens, 0);
-  const totalCost = filteredRows.reduce((sum, row) => sum + row.cost_usd, 0);
-
-  // AI Insights state
-  const [insights, setInsights] = useState<string[] | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  async function handleGenerateInsights() {
-    if (!currentWorkspace?.id) return;
-    setAiError(null);
-    setAiLoading(true);
-    try {
-      const result = await fetchAiInsights(currentWorkspace.id);
-      setInsights(result.insights ?? []);
-    } catch (err: any) {
-      setAiError(err?.message ?? "Failed to generate insights");
-    } finally {
-      setAiLoading(false);
-    }
-  }
-
   return (
     <>
-      <AppLayout title="Models" meta={`${filteredRows.length} models tracked`}>
-        <p className="text-sm text-muted-foreground max-w-2xl mb-6">
-          Aggregated from live telemetry rows only. Cost is sorted by default, and updates flow through the shared realtime snapshot.
-        </p>
-
-        <div className="mb-6 flex flex-col gap-3 border-t border-hairline pt-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-3">
-            <label className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-              <span>Filter</span>
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="model or provider"
-                className="h-8 w-44 rounded border border-hairline bg-background px-2 text-sm outline-none placeholder:text-muted-foreground/60"
+      <AppLayout title="Models" meta={`${modelRows.length} models tracked`}>
+        <div className="sticky top-0 z-20 -mx-4 mb-8 border-y border-hairline bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search models or providers" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none sm:max-w-xs" />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+              <DateRangeFilter value={dateRange} onChange={setDateRange} />
+              <GlobalFilters groups={filterGroups} values={filters} onChange={setFilter} onClear={clearFilters} />
+              <ExportButton 
+                rows={exportRows} 
+                disabled={filteredRows.length === 0}
+                workspaceId={currentWorkspace?.id}
+                dateRange={dateRange}
+                filters={filters}
               />
-            </label>
-
-            <label className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-              <span>Provider</span>
-              <select
-                value={providerFilter}
-                onChange={(event) => setProviderFilter(event.target.value as ProviderFilter)}
-                className="h-8 rounded border border-hairline bg-background px-2 text-sm outline-none"
-              >
-                <option value="all">All</option>
-                {providerOptions.map((provider) => (
-                  <option key={provider} value={provider}>
-                    {provider}
-                  </option>
-                ))}
+              <select value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                {Object.entries(SORT_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
               </select>
-            </label>
-          </div>
-
-          <label className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-            <span>Sort</span>
-            <select
-              value={sortKey}
-              onChange={(event) => setSortKey(event.target.value as SortKey)}
-              className="h-8 rounded border border-hairline bg-background px-2 text-sm outline-none"
-            >
-              {Object.entries(SORT_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="grid grid-cols-1 gap-8 hairline pb-8 sm:grid-cols-3">
-          <div>
-            <div className="label-mono mb-2">Requests</div>
-            <div className="font-serif text-3xl num">{fmtNum(filteredRows.reduce((sum, row) => sum + row.requests, 0))}</div>
-          </div>
-          <div>
-            <div className="label-mono mb-2">Total tokens</div>
-            <div className="font-serif text-3xl num">{fmtCompactNum(totalTokens)}</div>
-          </div>
-          <div>
-            <div className="label-mono mb-2">Total cost</div>
-            <div className="font-serif text-3xl num">{fmtUSD(totalCost)}</div>
-          </div>
-        </div>
-
-        <section className="mb-6 border-t border-hairline pt-6">
-          <div className="flex items-center justify-between">
-            <h2 className="label-mono">AI Insights</h2>
-            <div>
-              <button
-                onClick={handleGenerateInsights}
-                disabled={aiLoading || !currentWorkspace?.id}
-                className="rounded border border-hairline bg-primary px-3 py-1 text-sm text-white disabled:opacity-60"
-              >
-                {aiLoading ? "Generating…" : "Generate Insights"}
-              </button>
             </div>
           </div>
+        </div>
 
-          <div className="mt-4">
-            {aiError && <div className="text-negative text-sm">{aiError}</div>}
-            {!aiError && !insights && <div className="text-sm text-muted-foreground">No insights yet — click Generate Insights to analyze workspace usage.</div>}
-            {insights && (
-              <ul className="mt-3 space-y-2">
-                {insights.map((ins, idx) => (
-                  <li key={idx} className="rounded border border-hairline bg-background px-3 py-2 text-sm">
-                    {ins}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
+        <div className="grid grid-cols-1 gap-6 pb-8 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard title="Requests" value={fmtNum(filteredRows.length)} previousValue="filtered" changePercent={0} sparkline={trend.map((point) => point.requests)} tooltip="Visible model requests." isEmpty={filteredRows.length === 0} />
+          <KpiCard title="Total Tokens" value={fmtCompactNum(totalTokens)} previousValue="filtered" changePercent={0} sparkline={trend.map((point) => point.tokens)} tooltip="Input and output tokens for visible model traffic." isEmpty={filteredRows.length === 0} />
+          <KpiCard title="Total Cost" value={fmtUSD(totalCost)} previousValue="filtered" changePercent={0} sparkline={trend.map((point) => point.cost_usd)} tooltip="Total visible model cost." isEmpty={filteredRows.length === 0} />
+          <KpiCard title="Error Rate" value={fmtPercent(errorRate)} previousValue="filtered" changePercent={0} sparkline={trend.map((point) => point.error_rate)} tooltip="Visible model error rate." isEmpty={filteredRows.length === 0} />
+        </div>
 
-        {!hasRows ? (
-          <div className="mt-8 border-t border-hairline py-8 text-center text-sm text-muted-foreground">
-            No model telemetry has been recorded yet — install the SDK and generate a few requests to populate this view.
-          </div>
-        ) : (
+        <div className="mt-6 grid grid-cols-1 gap-10 xl:grid-cols-2">
+          <Suspense fallback={Array.from({ length: 4 }).map((_, index) => <ChartPanel key={index} title="Loading chart" isLoading><Skeleton className="h-[260px]" /></ChartPanel>)}>
+            <EntityCharts data={trend} />
+          </Suspense>
+        </div>
+
+        <div className="mt-12">
+          <HealthScorePanel title="Model Health" scores={healthScores} />
+        </div>
+
+        <div className="mt-12">
+          <RecommendationPanel title="AI Recommendations" recommendations={recommendations} isEmpty={filteredRows.length === 0} />
+        </div>
+
+        <section className="mt-12 border-t border-hairline pt-5">
+          <h2 className="mb-4 font-serif text-xl">Provider Comparison</h2>
           <DataTable
             columns={[
-              {
-                key: "model",
-                label: "Model",
-                render: (row) => (
-                  <div className="space-y-1">
-                    <div className="font-mono text-sm">{row.model}</div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={`rounded-sm px-2 py-0 text-[10px] uppercase tracking-[0.2em] ${getProviderBadgeClass(row.provider)}`}>
-                        {getProviderLabel(row.provider)}
-                      </Badge>
-                    </div>
-                  </div>
-                ),
-              },
-              {
-                key: "requests",
-                label: "Requests",
-                align: "right",
-                render: (row) => <span className="num">{fmtNum(row.requests)}</span>,
-              },
-              {
-                key: "tokens",
-                label: "Tokens",
-                align: "right",
-                render: (row) => (
-                  <div className="space-y-0.5 text-right">
-                    <div className="num">{fmtCompactNum(row.tokens)}</div>
-                    <div className="label-mono text-[10px] text-muted-foreground">
-                      in {fmtCompactNum(row.input_tokens)} · out {fmtCompactNum(row.output_tokens)}
-                    </div>
-                  </div>
-                ),
-              },
-              {
-                key: "avg_latency_ms",
-                label: "Avg latency",
-                align: "right",
-                render: (row) => <span className="num">{fmtLatency(row.avg_latency_ms)}</span>,
-              },
-              {
-                key: "cost_usd",
-                label: "Cost",
-                align: "right",
-                render: (row) => <span className="num">{fmtUSD(row.cost_usd)}</span>,
-              },
+              { key: "provider", label: "Provider", render: (row) => <span className="font-mono">{row.provider}</span> },
+              { key: "cost_usd", label: "Cost", align: "right", render: (row) => fmtUSD(row.cost_usd) },
+              { key: "latency", label: "Latency", align: "right", render: (row) => fmtLatency(row.requests > 0 ? row.latency / row.requests : 0) },
+              { key: "tokens", label: "Tokens", align: "right", render: (row) => fmtCompactNum(row.tokens) },
+              { key: "errors", label: "Error rate", align: "right", render: (row) => fmtPercent(row.requests > 0 ? row.errors / row.requests : 0) },
+              { key: "requests", label: "Requests", align: "right", render: (row) => fmtNum(row.requests) },
             ]}
-            rows={filteredRows}
-            onRowClick={(row) => setSelectedKey(getModelKey(row))}
-            getRowKey={(row) => getModelKey(row)}
+            rows={Object.values(providerRows).sort((a, b) => b.cost_usd - a.cost_usd)}
+            getRowKey={(row) => row.provider}
           />
-        )}
+        </section>
+
+        <section className="mt-12">
+          {modelRows.length === 0 ? (
+            <div className="border-t border-hairline py-8 text-center text-sm text-muted-foreground">No model telemetry matches the active filters.</div>
+          ) : (
+            <DataTable
+              columns={[
+                { key: "model", label: "Model", render: (row) => <div className="space-y-1"><div className="font-mono text-sm">{row.model}</div><Badge variant="outline" className="rounded-sm border-hairline bg-secondary/40 px-2 py-0 text-[10px] uppercase tracking-[0.2em]">{row.provider}</Badge></div> },
+                { key: "requests", label: "Requests", align: "right", render: (row) => fmtNum(row.requests) },
+                { key: "tokens", label: "Tokens", align: "right", render: (row) => fmtCompactNum(row.tokens) },
+                { key: "avg_latency_ms", label: "Avg latency", align: "right", render: (row) => fmtLatency(row.avg_latency_ms) },
+                { key: "error_rate", label: "Error rate", align: "right", render: (row) => fmtPercent(row.error_rate) },
+                { key: "cost_usd", label: "Cost", align: "right", render: (row) => fmtUSD(row.cost_usd) },
+              ]}
+              rows={modelRows}
+              onRowClick={(row) => setSelectedKey(row.key)}
+              getRowKey={(row) => row.key}
+            />
+          )}
+        </section>
       </AppLayout>
 
-      <Drawer open={Boolean(selectedRow)} onClose={() => setSelectedKey(null)} title={selectedRow ? `${selectedRow.model} · ${getProviderLabel(selectedRow.provider)}` : undefined}>
-        {selectedRow && detail && (
+      <Drawer open={Boolean(selected)} onClose={() => setSelectedKey(null)} title={selected ? `${selected.model} · ${selected.provider}` : undefined}>
+        {selected && (
           <div className="space-y-8">
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <div>
-                <div className="label-mono mb-2">Requests</div>
-                <div className="font-serif text-3xl num">{fmtNum(detail.requestCount)}</div>
-              </div>
-              <div>
-                <div className="label-mono mb-2">Total tokens</div>
-                <div className="font-serif text-3xl num">{fmtCompactNum(detail.totalTokens)}</div>
-              </div>
-              <div>
-                <div className="label-mono mb-2">Total cost</div>
-                <div className="font-serif text-3xl num">{fmtUSD(detail.totalCost)}</div>
-              </div>
-              <div>
-                <div className="label-mono mb-2">Avg latency</div>
-                <div className="font-serif text-3xl num">{fmtLatency(detail.avgLatency)}</div>
-              </div>
-            </div>
-
-            <section>
-              <h3 className="label-mono mb-2">Token split</h3>
-              <div className="grid grid-cols-3 gap-3 border-t border-hairline pt-3">
-                <div>
-                  <div className="label-mono mb-1">Input</div>
-                  <div className="font-mono text-lg">{fmtCompactNum(detail.inputTokens)}</div>
-                </div>
-                <div>
-                  <div className="label-mono mb-1">Output</div>
-                  <div className="font-mono text-lg">{fmtCompactNum(detail.outputTokens)}</div>
-                </div>
-                <div>
-                  <div className="label-mono mb-1">Total</div>
-                  <div className="font-mono text-lg">{fmtCompactNum(detail.totalTokens)}</div>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <div className="flex items-baseline justify-between mb-3">
-                <h3 className="label-mono">Endpoint usage</h3>
-                <div className="label-mono">{detail.endpoints.length} routes</div>
-              </div>
-              <div className="border-t border-hairline">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b border-hairline text-xs font-mono text-muted-foreground">
-                      <th className="py-2 text-left">Route</th>
-                      <th className="py-2 text-right">Requests</th>
-                      <th className="py-2 text-right">Tokens</th>
-                      <th className="py-2 text-right">Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.endpoints.map((endpoint) => (
-                      <tr key={endpoint.route} className="border-b border-hairline/60">
-                        <td className="py-2 font-mono text-sm">{endpoint.route}</td>
-                        <td className="py-2 text-right num">{fmtNum(endpoint.requests)}</td>
-                        <td className="py-2 text-right num">{fmtCompactNum(endpoint.tokens)}</td>
-                        <td className="py-2 text-right num">{fmtUSD(endpoint.cost)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <section className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-              <div>
-                <div className="flex items-baseline justify-between mb-3">
-                  <h3 className="label-mono">Recent activity</h3>
-                  <div className="label-mono">last 8</div>
-                </div>
-                {detail.recentActivity.length > 0 ? (
-                  <div className="border-t border-hairline">
-                    {detail.recentActivity.map((row) => (
-                      <div key={row.id} className="border-b border-hairline/60 py-2 text-xs">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="font-mono text-muted-foreground">{new Date(row.timestamp).toLocaleString()}</div>
-                          <div className={`font-mono ${row.error ? "text-negative" : "text-muted-foreground"}`}>{row.error ? row.error : "200"}</div>
-                        </div>
-                        <div className="mt-1 flex items-center justify-between gap-4">
-                          <div className="font-mono">{row.route}</div>
-                          <div className="font-mono text-muted-foreground">{fmtUSD(row.cost_usd)} · {fmtCompactNum(row.total_tokens)} tok</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="border-t border-hairline py-4 text-sm text-muted-foreground">No recent activity</div>
-                )}
-              </div>
-
-              <div>
-                <div className="flex items-baseline justify-between mb-3">
-                  <h3 className="label-mono">Recent errors</h3>
-                  <div className="label-mono">latest 8</div>
-                </div>
-                {detail.recentErrors.length > 0 ? (
-                  <div className="border-t border-hairline">
-                    {detail.recentErrors.map((row) => (
-                      <div key={row.id} className="border-b border-hairline/60 py-2 text-xs text-negative">
-                        <div className="font-mono text-muted-foreground">{new Date(row.timestamp).toLocaleString()}</div>
-                        <div className="mt-1 font-mono">{row.route} · {row.error}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="border-t border-hairline py-4 text-sm text-muted-foreground">No recent errors</div>
-                )}
-              </div>
-            </section>
+            <HealthScorePanel title="Selected Model Health" scores={[
+              { label: "Cost Score", value: score(selected.requests ? selected.cost_usd / selected.requests : 0, 0.08), detail: "Average request cost." },
+              { label: "Latency Score", value: score(selected.avg_latency_ms, 4000), detail: "Average latency." },
+              { label: "Reliability", value: score(selected.error_rate, 0.2), detail: "Error-free request share." },
+              { label: "Efficiency", value: (score(selected.avg_latency_ms, 4000) + score(selected.error_rate, 0.2)) / 2, detail: "Composite score." },
+            ]} />
+            <DataTable
+              columns={[
+                { key: "timestamp", label: "Timestamp", render: (row) => <span className="font-mono text-xs">{new Date(row.timestamp).toLocaleString()}</span> },
+                { key: "route", label: "Endpoint", render: (row) => <span className="font-mono">{row.route}</span> },
+                { key: "total_tokens", label: "Tokens", align: "right", render: (row) => fmtCompactNum(row.total_tokens) },
+                { key: "latency_ms", label: "Latency", align: "right", render: (row) => fmtLatency(row.latency_ms) },
+                { key: "cost_usd", label: "Cost", align: "right", render: (row) => fmtUSD(row.cost_usd) },
+                { key: "error", label: "Status", align: "right", render: (row) => <span className={`font-mono text-xs ${row.error ? "text-negative" : ""}`}>{getRowStatus(row)}</span> },
+              ]}
+              rows={selectedHistory.slice(0, 50)}
+              getRowKey={(row) => String(row.id)}
+            />
           </div>
         )}
       </Drawer>

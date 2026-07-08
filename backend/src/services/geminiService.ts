@@ -18,8 +18,9 @@ function generateInsightsLocally(summary: any): string[] {
     const budget = Number(summary.budget ?? 0);
     const providers = summary.providerBreakdown ?? {};
     const sortedProviders = Object.entries(providers).sort((a, b) => (b[1] as number) - (a[1] as number));
-    if (sortedProviders.length > 0) {
-      const [topProvider, topAmount] = sortedProviders[0];
+    const topProviderEntry = sortedProviders[0];
+    if (topProviderEntry) {
+      const [topProvider, topAmount] = topProviderEntry;
       const pct = total > 0 ? Math.round((Number(topAmount) / total) * 100) : 0;
       insights.push(`${topProvider} accounts for ${pct}% of spend.`);
     }

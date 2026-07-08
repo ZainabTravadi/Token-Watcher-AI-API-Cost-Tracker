@@ -7,6 +7,10 @@ import { createIngestRouter } from "./ingest";
 import { createRequestsRouter } from "./requests";
 import { createTelemetryRouter } from "./telemetry";
 import { createAiRouter } from "./ai";
+import { createIntelligenceRouter } from "./intelligence";
+import { createReportsRouter } from "./reports";
+import { createForecastRouter } from "./forecast";
+import { createCopilotRouter } from "./copilot";
 
 export function registerRoutes(app: Express): void {
   app.use("/", createHealthRouter());
@@ -26,4 +30,8 @@ export function registerRoutes(app: Express): void {
   app.use("/api", createTelemetryRouter());
   // AI insights
   app.use("/api", createAiRouter());
+  app.use("/api", createIntelligenceRouter());
+  app.use("/api", createReportsRouter());
+  app.use("/api", createForecastRouter());
+  app.use("/api", createCopilotRouter());
 }

@@ -12,6 +12,42 @@ import type { RequestLogQuery, RequestLogResponse } from "../types/requests";
 
 type TelemetryRow = TelemetryRecord;
 
+export interface ExportTelemetryQuery {
+  from: string; // YYYY-MM-DD
+  to: string; // YYYY-MM-DD
+  providers?: string[];
+  models?: string[];
+  endpoints?: string[];
+  statuses?: string[];
+  limit?: number;
+}
+
+export interface TelemetryHistoryBucket {
+  bucket_start: number;
+  requests: number;
+  cost_usd: number;
+  avg_cost_usd: number;
+  avg_latency_ms: number;
+  avg_total_tokens: number;
+  errors: number;
+}
+
+export type TelemetryResourceKind = "model" | "provider" | "route";
+
+export interface TelemetryResourcePeriodSummary {
+  resource: string;
+  current_requests: number;
+  current_cost_usd: number;
+  current_avg_latency_ms: number;
+  current_avg_total_tokens: number;
+  current_errors: number;
+  baseline_requests: number;
+  baseline_cost_usd: number;
+  baseline_avg_latency_ms: number;
+  baseline_avg_total_tokens: number;
+  baseline_errors: number;
+}
+
 const insertTelemetrySql = `
 INSERT INTO requests (
   workspace_id,
@@ -81,6 +117,93 @@ export async function listLatestTelemetry(workspaceId: string, limit = 100): Pro
     LIMIT ?;
   `;
   return (await db.prepare(sql).all<TelemetryRow>(workspaceId, limit)).map(normalizeTelemetryRow);
+}
+
+export async function listTelemetryHistoryBuckets(workspaceId: string, hours = 336, bucketHours = 1): Promise<TelemetryHistoryBucket[]> {
+  const db = getDatabase();
+  const bucketMs = Math.max(1, Math.trunc(bucketHours)) * 60 * 60 * 1000;
+  const since = Date.now() - Math.max(1, Math.trunc(hours)) * 60 * 60 * 1000;
+  const sql = `
+    SELECT
+      FLOOR(timestamp / ?) * ? AS bucket_start,
+      COUNT(*) AS requests,
+      COALESCE(SUM(cost_usd), 0) AS cost_usd,
+      COALESCE(AVG(cost_usd), 0) AS avg_cost_usd,
+      COALESCE(AVG(latency_ms), 0) AS avg_latency_ms,
+      COALESCE(AVG(total_tokens), 0) AS avg_total_tokens,
+      COALESCE(SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END), 0) AS errors
+    FROM requests
+    WHERE workspace_id = ? AND timestamp >= ?
+    GROUP BY bucket_start
+    ORDER BY bucket_start ASC;
+  `;
+
+  return (await db.prepare(sql).all<any>(bucketMs, bucketMs, workspaceId, since)).map((row) => ({
+    bucket_start: Number(row.bucket_start ?? 0),
+    requests: Number(row.requests ?? 0),
+    cost_usd: Number(row.cost_usd ?? 0),
+    avg_cost_usd: Number(row.avg_cost_usd ?? 0),
+    avg_latency_ms: Number(row.avg_latency_ms ?? 0),
+    avg_total_tokens: Number(row.avg_total_tokens ?? 0),
+    errors: Number(row.errors ?? 0)
+  }));
+}
+
+export async function listTelemetryResourcePeriodSummaries(
+  workspaceId: string,
+  resourceKind: TelemetryResourceKind,
+  currentHours = 24,
+  baselineHours = 336
+): Promise<TelemetryResourcePeriodSummary[]> {
+  const db = getDatabase();
+  const currentSince = Date.now() - Math.max(1, Math.trunc(currentHours)) * 60 * 60 * 1000;
+  const baselineSince = Date.now() - Math.max(currentHours + 1, Math.trunc(baselineHours)) * 60 * 60 * 1000;
+  const column = resourceKind === "route" ? "route" : resourceKind === "provider" ? "provider" : "model";
+  const sql = `
+    SELECT
+      ${column} AS resource,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS current_requests,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN cost_usd ELSE 0 END), 0) AS current_cost_usd,
+      COALESCE(AVG(CASE WHEN timestamp >= ? THEN latency_ms END), 0) AS current_avg_latency_ms,
+      COALESCE(AVG(CASE WHEN timestamp >= ? THEN total_tokens END), 0) AS current_avg_total_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND error IS NOT NULL THEN 1 ELSE 0 END), 0) AS current_errors,
+      COALESCE(SUM(CASE WHEN timestamp < ? THEN 1 ELSE 0 END), 0) AS baseline_requests,
+      COALESCE(SUM(CASE WHEN timestamp < ? THEN cost_usd ELSE 0 END), 0) AS baseline_cost_usd,
+      COALESCE(AVG(CASE WHEN timestamp < ? THEN latency_ms END), 0) AS baseline_avg_latency_ms,
+      COALESCE(AVG(CASE WHEN timestamp < ? THEN total_tokens END), 0) AS baseline_avg_total_tokens,
+      COALESCE(SUM(CASE WHEN timestamp < ? AND error IS NOT NULL THEN 1 ELSE 0 END), 0) AS baseline_errors
+    FROM requests
+    WHERE workspace_id = ? AND timestamp >= ? AND ${column} IS NOT NULL AND TRIM(${column}) != ''
+    GROUP BY ${column}
+    ORDER BY current_cost_usd DESC, current_requests DESC;
+  `;
+
+  return (await db.prepare(sql).all<any>(
+    currentSince,
+    currentSince,
+    currentSince,
+    currentSince,
+    currentSince,
+    currentSince,
+    currentSince,
+    currentSince,
+    currentSince,
+    currentSince,
+    workspaceId,
+    baselineSince
+  )).map((row) => ({
+    resource: String(row.resource ?? ""),
+    current_requests: Number(row.current_requests ?? 0),
+    current_cost_usd: Number(row.current_cost_usd ?? 0),
+    current_avg_latency_ms: Number(row.current_avg_latency_ms ?? 0),
+    current_avg_total_tokens: Number(row.current_avg_total_tokens ?? 0),
+    current_errors: Number(row.current_errors ?? 0),
+    baseline_requests: Number(row.baseline_requests ?? 0),
+    baseline_cost_usd: Number(row.baseline_cost_usd ?? 0),
+    baseline_avg_latency_ms: Number(row.baseline_avg_latency_ms ?? 0),
+    baseline_avg_total_tokens: Number(row.baseline_avg_total_tokens ?? 0),
+    baseline_errors: Number(row.baseline_errors ?? 0)
+  }));
 }
 
 export async function listRequestLog(workspaceId: string, query: RequestLogQuery = {}): Promise<RequestLogResponse> {
@@ -370,6 +493,90 @@ export async function getTelemetryCount(workspaceId?: string): Promise<number> {
 
   const row = await db.prepare(sql + ";").get<{ count: string | number }>(...params);
   return Number(row?.count ?? 0);
+}
+
+export async function listForExport(workspaceId: string, query: ExportTelemetryQuery): Promise<TelemetryRow[]> {
+  const db = getDatabase();
+  
+  // Parse date range to timestamps (start of day to end of day)
+  const from = new Date(`${query.from}T00:00:00`);
+  const to = new Date(`${query.to}T23:59:59`);
+  const fromTime = from.getTime();
+  const toTime = to.getTime();
+  
+  // Build WHERE conditions
+  const conditions: string[] = ["workspace_id = ?", "timestamp >= ?", "timestamp <= ?"];
+  const params: Array<string | number> = [workspaceId, fromTime, toTime];
+  
+  // Filter by provider
+  if (query.providers && query.providers.length > 0) {
+    const placeholders = query.providers.map(() => "?").join(",");
+    conditions.push(`provider IN (${placeholders})`);
+    params.push(...query.providers);
+  }
+  
+  // Filter by model
+  if (query.models && query.models.length > 0) {
+    const placeholders = query.models.map(() => "?").join(",");
+    conditions.push(`model IN (${placeholders})`);
+    params.push(...query.models);
+  }
+  
+  // Filter by endpoint (route)
+  if (query.endpoints && query.endpoints.length > 0) {
+    const placeholders = query.endpoints.map(() => "?").join(",");
+    conditions.push(`route IN (${placeholders})`);
+    params.push(...query.endpoints);
+  }
+  
+  // Filter by status (error conditions)
+  if (query.statuses && query.statuses.length > 0) {
+    const statusConditions: string[] = [];
+    let statusParamIndex = 0;
+    for (const status of query.statuses) {
+      if (status === "200") {
+        statusConditions.push("error IS NULL");
+      } else if (status === "ERR") {
+        statusConditions.push("error IS NOT NULL");
+      } else if (status === "429") {
+        statusConditions.push("error LIKE ?");
+        params.push("%429%");
+      } else if (status === "500") {
+        statusConditions.push("error LIKE ?");
+        params.push("%500%");
+      }
+      statusParamIndex++;
+    }
+    if (statusConditions.length > 0) {
+      conditions.push(`(${statusConditions.join(" OR ")})`);
+    }
+  }
+  
+  const where = conditions.join(" AND ");
+  const limit = Math.min(query.limit ?? 10000, 100000); // Max 100k records
+  const sql = `
+    SELECT
+      id,
+      workspace_id,
+      timestamp,
+      route,
+      model,
+      provider,
+      input_tokens,
+      output_tokens,
+      total_tokens,
+      cost_usd,
+      latency_ms,
+      error,
+      metadata
+    FROM requests
+    WHERE ${where}
+    ORDER BY timestamp DESC, id DESC
+    LIMIT ?
+  `;
+  
+  const rows = await db.prepare(sql).all<TelemetryRow>(...params, limit);
+  return rows.map(normalizeTelemetryRow);
 }
 
 function startOfToday(): number {
