@@ -158,6 +158,13 @@ export function createAuthRouter(): Router {
       res.status(200).json({
         user: { id: user.id, email: user.email, created_at: user.created_at },
         workspaces: workspacesWithKeys,
+        session: {
+          authenticated: true,
+          status: "active",
+          method: req.authMethod ?? "cookie",
+          issued_at: req.sessionIssuedAt ?? null,
+          expires_at: req.sessionExpiresAt ?? null,
+        },
       });
     } catch (error) {
       console.error("[auth:me:error]", error);

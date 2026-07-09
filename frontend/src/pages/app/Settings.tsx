@@ -1,33 +1,46 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AppLayout from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { SettingsApiKeySection } from "./settings/SettingsApiKeySection";
 import { SettingsAlertsSection } from "./settings/SettingsAlertsSection";
 import { SettingsBudgetSection } from "./settings/SettingsBudgetSection";
 import { SettingsDangerZoneSection } from "./settings/SettingsDangerZoneSection";
+import { SettingsEmailNotificationsSection } from "./settings/SettingsEmailNotificationsSection";
+import { SettingsSecuritySection } from "./settings/SettingsSecuritySection";
+import { SettingsUsageSection } from "./settings/SettingsUsageSection";
 import { SettingsWebhookSection } from "./settings/SettingsWebhookSection";
 import { SettingsWorkspaceNameSection } from "./settings/SettingsWorkspaceNameSection";
 import { DangerousActionDialog } from "./settings/DangerousActionDialog";
 import {
   deleteWorkspaceById,
+  fetchWorkspaceUsage,
   rotateWorkspaceApiKey,
+  sendDailyDigest,
+  sendTestEmail,
+  sendWeeklyReport,
+  testWorkspaceWebhook,
   updateWorkspaceMeta,
   updateWorkspaceSettings,
 } from "./settings/api";
 import {
   validateAlertThreshold,
+  validateLatencyThreshold,
   validateMonthlyBudget,
+  validateNotificationEmail,
+  validateTimeValue,
+  validateTimezone,
   validateWebhookUrl,
   validateWorkspaceName,
 } from "./settings/validation";
 
-type AlertSettingKey = "alert_on_high_cost" | "alert_on_errors";
+type AlertSettingKey = "alert_on_high_cost" | "alert_on_errors" | "alert_on_latency" | "daily_digest" | "weekly_report";
 
 function settingBool(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : value === 0 || value === 1 ? Boolean(value) : fallback;
@@ -37,10 +50,14 @@ function settingNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function settingString(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
 export default function Settings() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { currentWorkspace, refreshUser, setCurrentWorkspace } = useAuth();
+  const { currentWorkspace, refreshUser, setCurrentWorkspace, session, user, isLoading } = useAuth();
   const { toast } = useToast();
   const previousWorkspaceId = useRef<string | null>(null);
 
@@ -56,16 +73,40 @@ export default function Settings() {
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookError, setWebhookError] = useState<string | null>(null);
+  const [notificationEmail, setNotificationEmail] = useState("");
+  const [notificationEmailError, setNotificationEmailError] = useState<string | null>(null);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [lastTestEmailSent, setLastTestEmailSent] = useState<number | null>(null);
   const [alertHighCost, setAlertHighCost] = useState(true);
   const [alertErrors, setAlertErrors] = useState(true);
+  const [alertLatency, setAlertLatency] = useState(false);
+  const [dailyDigest, setDailyDigest] = useState(false);
+  const [weeklyReport, setWeeklyReport] = useState(true);
   const [thresholdDraft, setThresholdDraft] = useState("50");
   const [thresholdError, setThresholdError] = useState<string | null>(null);
+  const [latencyThresholdDraft, setLatencyThresholdDraft] = useState("2000");
+  const [latencyThresholdError, setLatencyThresholdError] = useState<string | null>(null);
+  const [dailyDigestTime, setDailyDigestTime] = useState("09:00");
+  const [digestTimezone, setDigestTimezone] = useState("UTC");
+  const [weeklyReportDay, setWeeklyReportDay] = useState("Monday");
+  const [weeklyReportTime, setWeeklyReportTime] = useState("08:00");
 
   const [savingMeta, setSavingMeta] = useState(false);
   const [savingAlerts, setSavingAlerts] = useState(false);
+  const [savingEmailSettings, setSavingEmailSettings] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testingWebhook, setTestingWebhook] = useState(false);
   const [rotatingKey, setRotatingKey] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const usageQuery = useQuery({
+    queryKey: ["workspace-usage", currentWorkspace?.id],
+    queryFn: () => fetchWorkspaceUsage(currentWorkspace!.id),
+    enabled: !!currentWorkspace?.id,
+    staleTime: 5_000,
+    retry: 1,
+  });
 
   useEffect(() => {
     if (!currentWorkspace) return;
@@ -76,13 +117,26 @@ export default function Settings() {
     setName(currentWorkspace.name);
     setBudget(String(currentWorkspace.monthly_budget));
     setWebhookUrl(currentWorkspace.webhook_url ?? "");
+    setNotificationEmail(settingString(currentWorkspace.settings?.notification_email, user?.email ?? ""));
+    setEmailVerified(settingBool(currentWorkspace.settings?.email_verified, Boolean(currentWorkspace.settings?.notification_email || user?.email)));
+    setLastTestEmailSent(settingNumber(currentWorkspace.settings?.last_test_email_sent, 0) || null);
     setAlertHighCost(settingBool(currentWorkspace.settings?.alert_on_high_cost, true));
     setAlertErrors(settingBool(currentWorkspace.settings?.alert_on_errors, true));
+    setAlertLatency(settingBool(currentWorkspace.settings?.alert_on_latency, false));
+    setDailyDigest(settingBool(currentWorkspace.settings?.daily_digest, false));
+    setWeeklyReport(settingBool(currentWorkspace.settings?.weekly_report, true));
     setThresholdDraft(String(settingNumber(currentWorkspace.settings?.alert_cost_threshold, 50)));
+    setLatencyThresholdDraft(String(settingNumber(currentWorkspace.settings?.latency_threshold_ms, 2000)));
+    setDailyDigestTime(settingString(currentWorkspace.settings?.daily_digest_time, "09:00"));
+    setDigestTimezone(settingString(currentWorkspace.settings?.digest_timezone, Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"));
+    setWeeklyReportDay(settingString(currentWorkspace.settings?.weekly_report_day, "Monday"));
+    setWeeklyReportTime(settingString(currentWorkspace.settings?.weekly_report_time, "08:00"));
     setNameError(null);
     setBudgetError(null);
     setWebhookError(null);
+    setNotificationEmailError(null);
     setThresholdError(null);
+    setLatencyThresholdError(null);
     setError(null);
 
     if (workspaceChanged) {
@@ -92,7 +146,7 @@ export default function Settings() {
       setRotateDialogOpen(false);
       setDeleteDialogOpen(false);
     }
-  }, [currentWorkspace]);
+  }, [currentWorkspace, user?.email]);
 
   const syncWorkspaceState = async () => {
     await refreshUser();
@@ -100,6 +154,70 @@ export default function Settings() {
     await queryClient.invalidateQueries({ queryKey: ["telemetry-rows"] });
     await queryClient.invalidateQueries({ queryKey: ["request-log"] });
     await queryClient.invalidateQueries({ queryKey: ["health"] });
+    await queryClient.invalidateQueries({ queryKey: ["workspace-usage"] });
+  };
+
+  const alertDraft = useMemo(
+    () => ({
+      alert_on_high_cost: alertHighCost,
+      alert_on_errors: alertErrors,
+      alert_on_latency: alertLatency,
+      daily_digest: dailyDigest,
+      weekly_report: weeklyReport,
+      alert_cost_threshold: Number(thresholdDraft),
+      latency_threshold_ms: Number(latencyThresholdDraft),
+      daily_digest_time: dailyDigestTime,
+      digest_timezone: digestTimezone.trim(),
+      weekly_report_day: weeklyReportDay,
+      weekly_report_time: weeklyReportTime,
+    }),
+    [alertErrors, alertHighCost, alertLatency, dailyDigest, dailyDigestTime, digestTimezone, latencyThresholdDraft, thresholdDraft, weeklyReport, weeklyReportDay, weeklyReportTime]
+  );
+
+  const hasMetaChanges = !!currentWorkspace && (
+    name.trim() !== currentWorkspace.name ||
+    Number(budget) !== Number(currentWorkspace.monthly_budget) ||
+    webhookUrl.trim() !== (currentWorkspace.webhook_url ?? "")
+  );
+
+  const hasAlertChanges = !!currentWorkspace && (
+    alertHighCost !== settingBool(currentWorkspace.settings?.alert_on_high_cost, true) ||
+    alertErrors !== settingBool(currentWorkspace.settings?.alert_on_errors, true) ||
+    alertLatency !== settingBool(currentWorkspace.settings?.alert_on_latency, false) ||
+    dailyDigest !== settingBool(currentWorkspace.settings?.daily_digest, false) ||
+    weeklyReport !== settingBool(currentWorkspace.settings?.weekly_report, true) ||
+    Number(thresholdDraft) !== settingNumber(currentWorkspace.settings?.alert_cost_threshold, 50) ||
+    Number(latencyThresholdDraft) !== settingNumber(currentWorkspace.settings?.latency_threshold_ms, 2000) ||
+    dailyDigestTime !== settingString(currentWorkspace.settings?.daily_digest_time, "09:00") ||
+    digestTimezone.trim() !== settingString(currentWorkspace.settings?.digest_timezone, Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") ||
+    weeklyReportDay !== settingString(currentWorkspace.settings?.weekly_report_day, "Monday") ||
+    weeklyReportTime !== settingString(currentWorkspace.settings?.weekly_report_time, "08:00")
+  );
+
+  const hasUnsavedChanges = hasMetaChanges || hasAlertChanges;
+
+  const resetDrafts = () => {
+    if (!currentWorkspace) return;
+    setName(currentWorkspace.name);
+    setBudget(String(currentWorkspace.monthly_budget));
+    setWebhookUrl(currentWorkspace.webhook_url ?? "");
+    setAlertHighCost(settingBool(currentWorkspace.settings?.alert_on_high_cost, true));
+    setAlertErrors(settingBool(currentWorkspace.settings?.alert_on_errors, true));
+    setAlertLatency(settingBool(currentWorkspace.settings?.alert_on_latency, false));
+    setDailyDigest(settingBool(currentWorkspace.settings?.daily_digest, false));
+    setWeeklyReport(settingBool(currentWorkspace.settings?.weekly_report, true));
+    setThresholdDraft(String(settingNumber(currentWorkspace.settings?.alert_cost_threshold, 50)));
+    setLatencyThresholdDraft(String(settingNumber(currentWorkspace.settings?.latency_threshold_ms, 2000)));
+    setDailyDigestTime(settingString(currentWorkspace.settings?.daily_digest_time, "09:00"));
+    setDigestTimezone(settingString(currentWorkspace.settings?.digest_timezone, Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"));
+    setWeeklyReportDay(settingString(currentWorkspace.settings?.weekly_report_day, "Monday"));
+    setWeeklyReportTime(settingString(currentWorkspace.settings?.weekly_report_time, "08:00"));
+    setNameError(null);
+    setBudgetError(null);
+    setWebhookError(null);
+    setThresholdError(null);
+    setLatencyThresholdError(null);
+    setError(null);
   };
 
   const handleCopyApiKey = async () => {
@@ -119,7 +237,7 @@ export default function Settings() {
     try {
       setRotatingKey(true);
       setError(null);
-      const data = await rotateWorkspaceApiKey(currentWorkspace.id);
+      const data = await rotateWorkspaceApiKey(currentWorkspace.id, currentWorkspace.name);
       setPlainApiKey(data.apiKey);
       setShowApiKey(false);
       setRotateDialogOpen(false);
@@ -135,33 +253,27 @@ export default function Settings() {
   };
 
   const handleAlertUpdate = async (settingKey: AlertSettingKey, nextValue: boolean) => {
-    if (!currentWorkspace) return;
-
-    const previousHighCost = alertHighCost;
-    const previousErrors = alertErrors;
     if (settingKey === "alert_on_high_cost") {
       setAlertHighCost(nextValue);
-    } else {
+    } else if (settingKey === "alert_on_errors") {
       setAlertErrors(nextValue);
-    }
-
-    try {
-      setSavingAlerts(true);
-      await updateWorkspaceSettings(currentWorkspace.id, { [settingKey]: nextValue });
-      await syncWorkspaceState();
-    } catch (err) {
-      setAlertHighCost(previousHighCost);
-      setAlertErrors(previousErrors);
-      const message = err instanceof Error ? err.message : "Failed to update alert";
-      toast({ title: "Error", description: message, variant: "destructive" });
-    } finally {
-      setSavingAlerts(false);
+    } else if (settingKey === "alert_on_latency") {
+      setAlertLatency(nextValue);
+    } else if (settingKey === "daily_digest") {
+      setDailyDigest(nextValue);
+    } else if (settingKey === "weekly_report") {
+      setWeeklyReport(nextValue);
     }
   };
 
   const handleThresholdInputChange = (value: string) => {
     setThresholdDraft(value);
     setThresholdError(null);
+  };
+
+  const handleLatencyThresholdInputChange = (value: string) => {
+    setLatencyThresholdDraft(value);
+    setLatencyThresholdError(null);
   };
 
   const handleThresholdSliderChange = (value: number) => {
@@ -195,6 +307,132 @@ export default function Settings() {
     }
   };
 
+  const handleSaveAlerts = async () => {
+    if (!currentWorkspace) return false;
+
+    const thresholdValidation = validateAlertThreshold(thresholdDraft);
+    const latencyValidation = validateLatencyThreshold(latencyThresholdDraft);
+    const dailyTimeValidation = validateTimeValue(dailyDigestTime, "Daily digest time");
+    const weeklyTimeValidation = validateTimeValue(weeklyReportTime, "Weekly report time");
+    const timezoneValidation = validateTimezone(digestTimezone);
+    setThresholdError(thresholdValidation.valid ? null : thresholdValidation.error || "Invalid threshold");
+    setLatencyThresholdError(latencyValidation.valid ? null : latencyValidation.error || "Invalid latency threshold");
+    if (!thresholdValidation.valid || !latencyValidation.valid || !dailyTimeValidation.valid || !weeklyTimeValidation.valid || !timezoneValidation.valid) {
+      const message = dailyTimeValidation.error || weeklyTimeValidation.error || timezoneValidation.error || "Invalid alert settings";
+      toast({ title: "Check alert settings", description: message, variant: "destructive" });
+      return false;
+    }
+
+    try {
+      setSavingAlerts(true);
+      await updateWorkspaceSettings(currentWorkspace.id, alertDraft);
+      await syncWorkspaceState();
+      toast({ title: "Alert settings saved", description: "Notification preferences updated" });
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update alert settings";
+      toast({ title: "Error", description: message, variant: "destructive" });
+      return false;
+    } finally {
+      setSavingAlerts(false);
+    }
+  };
+
+  const handleSaveEmailSettings = async () => {
+    if (!currentWorkspace) return;
+
+    const trimmedEmail = notificationEmail.trim().toLowerCase();
+    const validation = trimmedEmail ? validateNotificationEmail(trimmedEmail) : { valid: true };
+    setNotificationEmailError(validation.valid ? null : validation.error || "Invalid recipient email");
+    if (!validation.valid) return;
+
+    try {
+      setSavingEmailSettings(true);
+      const settings = await updateWorkspaceSettings(currentWorkspace.id, { notification_email: trimmedEmail || null });
+      setNotificationEmail(String(settings.notification_email ?? ""));
+      setEmailVerified(settingBool(settings.email_verified, false));
+      setLastTestEmailSent(settingNumber(settings.last_test_email_sent, 0) || null);
+      await syncWorkspaceState();
+      toast({
+        title: trimmedEmail ? "Recipient saved" : "Recipient cleared",
+        description: settingBool(settings.email_verified, false)
+          ? "Verified delivery remains active for this recipient."
+          : trimmedEmail ? "Send a test email to verify delivery before scheduled notifications run." : "Scheduled emails are disabled until a recipient is configured.",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to save recipient email";
+      setNotificationEmailError(message);
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setSavingEmailSettings(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    if (!currentWorkspace || testingEmail) return;
+
+    const trimmedEmail = notificationEmail.trim().toLowerCase();
+    const validation = validateNotificationEmail(trimmedEmail);
+    setNotificationEmailError(validation.valid ? null : validation.error || "Invalid recipient email");
+    if (!validation.valid) return;
+
+    try {
+      setTestingEmail(true);
+      const result = await sendTestEmail(currentWorkspace.id, trimmedEmail);
+      setNotificationEmail(result.recipient);
+      setEmailVerified(true);
+      setLastTestEmailSent(result.sentAt);
+      await syncWorkspaceState();
+      toast({
+        title: "Test email sent",
+        description: result.email.simulated ? "Delivery was simulated because Resend is not configured in this environment." : `Sent to ${result.recipient}`,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send test email";
+      setEmailVerified(false);
+      setNotificationEmailError(message);
+      toast({ title: "Test email failed", description: message, variant: "destructive" });
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
+  const handleSendDailyDigest = async () => {
+    if (!currentWorkspace) return;
+    const saved = hasAlertChanges ? await handleSaveAlerts() : true;
+    if (!saved) return;
+
+    try {
+      setSavingAlerts(true);
+      const result = await sendDailyDigest(currentWorkspace.id);
+      await syncWorkspaceState();
+      toast({ title: "Daily digest sent", description: `Sent to ${result.recipient}` });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send daily digest";
+      toast({ title: "Daily digest failed", description: message, variant: "destructive" });
+    } finally {
+      setSavingAlerts(false);
+    }
+  };
+
+  const handleSendWeeklyReport = async () => {
+    if (!currentWorkspace) return;
+    const saved = hasAlertChanges ? await handleSaveAlerts() : true;
+    if (!saved) return;
+
+    try {
+      setSavingAlerts(true);
+      const result = await sendWeeklyReport(currentWorkspace.id);
+      await syncWorkspaceState();
+      toast({ title: "Weekly report sent", description: `Sent to ${result.recipient}` });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send weekly report";
+      toast({ title: "Weekly report failed", description: message, variant: "destructive" });
+    } finally {
+      setSavingAlerts(false);
+    }
+  };
+
   const handleSaveWebhook = async () => {
     if (!currentWorkspace) return;
 
@@ -218,6 +456,36 @@ export default function Settings() {
       toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setSavingMeta(false);
+    }
+  };
+
+  const handleTestWebhook = async () => {
+    if (!currentWorkspace) return;
+
+    const validation = validateWebhookUrl(webhookUrl);
+    if (!webhookUrl.trim() || !validation.valid) {
+      setWebhookError(validation.error || "Webhook URL is required");
+      return;
+    }
+
+    try {
+      setTestingWebhook(true);
+      setWebhookError(null);
+      const result = await testWorkspaceWebhook(currentWorkspace.id, webhookUrl.trim());
+      await syncWorkspaceState();
+      toast({
+        title: result.success ? "Webhook test succeeded" : "Webhook test failed",
+        description: result.responseCode
+          ? `HTTP ${result.responseCode} in ${result.responseTimeMs} ms`
+          : result.error || `Completed in ${result.responseTimeMs} ms`,
+        variant: result.success ? "default" : "destructive",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to test webhook";
+      setWebhookError(message);
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setTestingWebhook(false);
     }
   };
 
@@ -272,24 +540,39 @@ export default function Settings() {
     const nameValidation = validateWorkspaceName(name);
     const budgetValidation = validateMonthlyBudget(budget);
     const webhookValidation = validateWebhookUrl(webhookUrl);
+    const thresholdValidation = validateAlertThreshold(thresholdDraft);
+    const latencyValidation = validateLatencyThreshold(latencyThresholdDraft);
+    const dailyTimeValidation = validateTimeValue(dailyDigestTime, "Daily digest time");
+    const weeklyTimeValidation = validateTimeValue(weeklyReportTime, "Weekly report time");
+    const timezoneValidation = validateTimezone(digestTimezone);
 
     setNameError(nameValidation.valid ? null : nameValidation.error || "Invalid name");
     setBudgetError(budgetValidation.valid ? null : budgetValidation.error || "Invalid budget");
     setWebhookError(webhookValidation.valid ? null : webhookValidation.error || "Invalid webhook URL");
+    setThresholdError(thresholdValidation.valid ? null : thresholdValidation.error || "Invalid threshold");
+    setLatencyThresholdError(latencyValidation.valid ? null : latencyValidation.error || "Invalid latency threshold");
 
-    if (!nameValidation.valid || !budgetValidation.valid || !webhookValidation.valid) {
+    if (!nameValidation.valid || !budgetValidation.valid || !webhookValidation.valid || !thresholdValidation.valid || !latencyValidation.valid || !dailyTimeValidation.valid || !weeklyTimeValidation.valid || !timezoneValidation.valid) {
+      const message = dailyTimeValidation.error || weeklyTimeValidation.error || timezoneValidation.error;
+      if (message) toast({ title: "Check alert settings", description: message, variant: "destructive" });
       return;
     }
 
     try {
       setSavingMeta(true);
+      setSavingAlerts(true);
       setError(null);
       const trimmedWebhook = webhookUrl.trim();
-      await updateWorkspaceMeta(currentWorkspace.id, {
-        name: name.trim(),
-        monthly_budget: Number(budget),
-        webhook_url: trimmedWebhook || null,
-      });
+      if (hasMetaChanges) {
+        await updateWorkspaceMeta(currentWorkspace.id, {
+          name: name.trim(),
+          monthly_budget: Number(budget),
+          webhook_url: trimmedWebhook || null,
+        });
+      }
+      if (hasAlertChanges) {
+        await updateWorkspaceSettings(currentWorkspace.id, alertDraft);
+      }
       setName(name.trim());
       setWebhookUrl(trimmedWebhook);
       await syncWorkspaceState();
@@ -300,6 +583,7 @@ export default function Settings() {
       toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setSavingMeta(false);
+      setSavingAlerts(false);
     }
   };
 
@@ -309,7 +593,7 @@ export default function Settings() {
     try {
       setDeletingWorkspace(true);
       setError(null);
-      await deleteWorkspaceById(currentWorkspace.id);
+      await deleteWorkspaceById(currentWorkspace.id, deleteConfirmation.trim());
       setDeleteDialogOpen(false);
       setDeleteConfirmation("");
       setPlainApiKey(null);
@@ -330,9 +614,15 @@ export default function Settings() {
   if (!currentWorkspace) {
     return (
       <AppLayout title="Settings" meta="loading...">
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">No workspace selected</p>
-        </div>
+        {isLoading ? (
+          <div className="max-w-2xl space-y-6">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-24 w-full" />
+            ))}
+          </div>
+        ) : (
+          <div className="border p-6 text-center text-sm text-muted-foreground">No workspace selected</div>
+        )}
       </AppLayout>
     );
   }
@@ -343,8 +633,7 @@ export default function Settings() {
       ? parsed
       : settingNumber(currentWorkspace.settings?.alert_cost_threshold, 50);
   })();
-  const deleteEnabled =
-    deleteConfirmation === "DELETE" || deleteConfirmation.trim() === currentWorkspace.name;
+  const deleteEnabled = deleteConfirmation.trim() === currentWorkspace.name;
 
   return (
     <AppLayout title="Settings" meta={`workspace | ${currentWorkspace.name}`}>
@@ -353,7 +642,7 @@ export default function Settings() {
           event.preventDefault();
           void handleSaveSettings();
         }}
-        className="max-w-2xl space-y-8"
+        className="max-w-3xl space-y-8 pb-24"
       >
         {error && (
           <Alert variant="destructive">
@@ -393,38 +682,100 @@ export default function Settings() {
           onSave={() => void handleSaveBudget()}
         />
 
+        <SettingsEmailNotificationsSection
+          value={notificationEmail}
+          error={notificationEmailError}
+          verified={emailVerified}
+          lastTestAt={lastTestEmailSent}
+          isSaving={savingEmailSettings}
+          isTesting={testingEmail}
+          onChange={(value) => {
+            setNotificationEmail(value);
+            setNotificationEmailError(null);
+            setEmailVerified(value.trim().toLowerCase() === settingString(currentWorkspace.settings?.notification_email, "").toLowerCase()
+              ? settingBool(currentWorkspace.settings?.email_verified, false)
+              : false);
+          }}
+          onSave={() => void handleSaveEmailSettings()}
+          onTest={() => void handleTestEmail()}
+        />
+
         <SettingsAlertsSection
           alertHighCost={alertHighCost}
           alertErrors={alertErrors}
+          alertLatency={alertLatency}
+          dailyDigest={dailyDigest}
+          weeklyReport={weeklyReport}
           thresholdDraft={thresholdDraft}
+          latencyThresholdDraft={latencyThresholdDraft}
+          dailyDigestTime={dailyDigestTime}
+          digestTimezone={digestTimezone}
+          weeklyReportDay={weeklyReportDay}
+          weeklyReportTime={weeklyReportTime}
+          recipientEmail={notificationEmail}
+          recipientVerified={emailVerified}
           sliderValue={sliderValue}
           error={thresholdError}
+          latencyError={latencyThresholdError}
           isSaving={savingAlerts}
           onToggleHighCost={(enabled) => void handleAlertUpdate("alert_on_high_cost", enabled)}
           onToggleErrors={(enabled) => void handleAlertUpdate("alert_on_errors", enabled)}
+          onToggleLatency={(enabled) => void handleAlertUpdate("alert_on_latency", enabled)}
+          onToggleDailyDigest={(enabled) => void handleAlertUpdate("daily_digest", enabled)}
+          onToggleWeeklyReport={(enabled) => void handleAlertUpdate("weekly_report", enabled)}
           onThresholdInputChange={handleThresholdInputChange}
+          onLatencyThresholdInputChange={handleLatencyThresholdInputChange}
+          onDailyDigestTimeChange={setDailyDigestTime}
+          onDigestTimezoneChange={setDigestTimezone}
+          onWeeklyReportDayChange={setWeeklyReportDay}
+          onWeeklyReportTimeChange={setWeeklyReportTime}
           onThresholdSliderChange={handleThresholdSliderChange}
           onSaveThreshold={() => void handleSaveThreshold()}
+          onSaveAlerts={() => void handleSaveAlerts()}
+          onSendDailyDigest={() => void handleSendDailyDigest()}
+          onSendWeeklyReport={() => void handleSendWeeklyReport()}
         />
 
         <SettingsWebhookSection
           value={webhookUrl}
           error={webhookError}
           isSaving={savingMeta}
+          isTesting={testingWebhook}
+          lastTestAt={settingNumber(currentWorkspace.settings?.webhook_last_test_at, 0) || null}
+          lastStatus={typeof currentWorkspace.settings?.webhook_last_status === "string" ? currentWorkspace.settings.webhook_last_status : null}
+          lastResponseCode={settingNumber(currentWorkspace.settings?.webhook_last_response_code, 0) || null}
+          lastResponseTimeMs={settingNumber(currentWorkspace.settings?.webhook_last_response_time_ms, 0) || null}
           onChange={(value) => {
             setWebhookUrl(value);
             setWebhookError(null);
           }}
           onSave={() => void handleSaveWebhook()}
+          onTest={() => void handleTestWebhook()}
         />
 
-        <div className="border-t pt-6 flex items-center gap-4">
-          <Button type="submit" disabled={savingMeta}>
-            {savingMeta ? "Saving..." : "Save changes"}
-          </Button>
-          <Button type="button" variant="outline" onClick={() => window.history.back()}>
-            Cancel
-          </Button>
+        <SettingsUsageSection
+          workspace={currentWorkspace}
+          usage={usageQuery.data}
+          isLoading={usageQuery.isLoading}
+          error={usageQuery.error instanceof Error ? usageQuery.error.message : null}
+        />
+
+        <SettingsSecuritySection user={user} session={session} workspace={currentWorkspace} />
+
+        <div className="sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs text-muted-foreground">
+              {hasUnsavedChanges ? "Unsaved changes" : "All changes saved"}
+            </div>
+            <div className="flex gap-3">
+              <Button type="submit" disabled={savingMeta || savingAlerts || !hasUnsavedChanges}>
+                {savingMeta || savingAlerts ? "Saving..." : "Save changes"}
+              </Button>
+              <Button type="button" variant="outline" onClick={resetDrafts} disabled={savingMeta || savingAlerts || !hasUnsavedChanges}>
+                Cancel
+              </Button>
+            </div>
+          </div>
         </div>
       </form>
 
@@ -464,8 +815,7 @@ export default function Settings() {
       >
         <div className="space-y-3">
           <div className="border border-red-500/30 bg-red-500/5 p-3 text-xs text-muted-foreground">
-            Type <span className="font-mono text-foreground">{currentWorkspace.name}</span> or{" "}
-            <span className="font-mono text-foreground">DELETE</span> to confirm.
+            Type <span className="font-mono text-foreground">{currentWorkspace.name}</span> to confirm.
           </div>
           <Input
             value={deleteConfirmation}

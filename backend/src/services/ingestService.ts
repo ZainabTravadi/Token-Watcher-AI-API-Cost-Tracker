@@ -1,6 +1,7 @@
 import { telemetryBus } from "./telemetryBus";
 import { insertTelemetry, insertTelemetryBatch } from "./telemetryRepository";
 import { invalidateAnalyticsCache } from "./analyticsCache";
+import { evaluateWorkspaceAlerts } from "./notificationService";
 import type { TelemetryRecord } from "../types/telemetry";
 import type { IngestTelemetryInput } from "../types/ingest";
 
@@ -28,6 +29,9 @@ export async function ingestTelemetry(workspaceId: string, input: IngestTelemetr
     telemetryBus.emitTelemetry(row);
   }
   invalidateAnalyticsCache(workspaceId);
+  setImmediate(() => {
+    void evaluateWorkspaceAlerts(workspaceId);
+  });
 
   return {
     rows: inserted,

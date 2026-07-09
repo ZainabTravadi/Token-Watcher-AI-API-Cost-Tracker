@@ -2,6 +2,7 @@ import { Suspense, lazy, useMemo, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { DataTable } from "@/components/DataTable";
 import Drawer from "@/components/Drawer";
+import { OperationalSummary, type OperationalSummaryItem } from "@/components/OperationalSummary";
 import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartPanel } from "@/components/overview/ChartPanel";
@@ -182,6 +183,20 @@ export default function Endpoints() {
   const avgLatency = searchedRows.length > 0 ? searchedRows.reduce((sum, row) => sum + row.latency_ms, 0) / searchedRows.length : 0;
   const errorRate = searchedRows.length > 0 ? searchedRows.filter((row) => row.error).length / searchedRows.length : 0;
   const successRate = 1 - errorRate;
+  const topEndpoint = endpoints[0] ?? null;
+  const highestTrafficEndpoint = [...endpoints].sort((a, b) => b.requests - a.requests)[0] ?? null;
+  const slowestEndpoint = [...endpoints].sort((a, b) => b.avg_latency_ms - a.avg_latency_ms)[0] ?? null;
+  const providerDistribution = new Set(searchedRows.map((row) => row.provider).filter(Boolean)).size;
+  const topModels = new Set(searchedRows.map((row) => row.model).filter(Boolean)).size;
+  const lastEndpointActivity = searchedRows.length > 0 ? Math.max(...searchedRows.map((row) => row.timestamp)) : null;
+  const summaryItems: OperationalSummaryItem[] = [
+    { label: "Most expensive", value: topEndpoint?.route ?? "none", detail: topEndpoint ? fmtUSD(topEndpoint.cost_usd) : "no endpoint spend" },
+    { label: "Highest traffic", value: highestTrafficEndpoint?.route ?? "none", detail: highestTrafficEndpoint ? `${fmtNum(highestTrafficEndpoint.requests)} requests` : "no traffic" },
+    { label: "Slowest", value: slowestEndpoint?.route ?? "none", detail: slowestEndpoint ? fmtLatency(slowestEndpoint.avg_latency_ms) : "no latency data", tone: slowestEndpoint && slowestEndpoint.avg_latency_ms > 2500 ? "warn" : "neutral" },
+    { label: "Error rate", value: fmtPercent(errorRate), detail: `${fmtPercent(successRate)} success`, tone: errorRate > 0.05 ? "bad" : errorRate > 0 ? "warn" : "good" },
+    { label: "Providers", value: fmtNum(providerDistribution), detail: `${fmtNum(topModels)} models observed` },
+    { label: "Last request", value: lastEndpointActivity ? new Date(lastEndpointActivity).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "none", detail: lastEndpointActivity ? new Date(lastEndpointActivity).toLocaleDateString() : "waiting for telemetry" },
+  ];
   const recommendations = useMemo(() => buildRecommendations(searchedRows, endpoints), [endpoints, searchedRows]);
   const healthScores: HealthScore[] = [
     { label: "Health Score", value: (score(avgLatency, 4000) + score(errorRate, 0.2)) / 2, detail: "Blends latency and success rate." },
@@ -252,6 +267,8 @@ export default function Endpoints() {
           </div>
         </div>
 
+        <OperationalSummary items={summaryItems} />
+
         <div className="grid grid-cols-1 gap-6 pb-8 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard title="Requests" value={fmtNum(searchedRows.length)} previousValue="filtered" changePercent={0} sparkline={trend.map((point) => point.requests)} tooltip="Visible endpoint request volume." isEmpty={searchedRows.length === 0} />
           <KpiCard title="Total Cost" value={fmtUSD(totalCost)} previousValue="filtered" changePercent={0} sparkline={trend.map((point) => point.cost_usd)} tooltip="Visible endpoint spend." isEmpty={searchedRows.length === 0} />
@@ -287,6 +304,15 @@ export default function Endpoints() {
                 { key: "error_rate", label: "Error rate", align: "right", render: (row) => fmtPercent(row.error_rate) },
               ]}
               rows={endpoints}
+              summaryRows={[{
+                route: "Endpoint total",
+                requests: endpoints.reduce((sum, row) => sum + row.requests, 0),
+                cost_usd: endpoints.reduce((sum, row) => sum + row.cost_usd, 0),
+                avg_cost_usd: endpoints.reduce((sum, row) => sum + row.cost_usd, 0) / Math.max(1, endpoints.reduce((sum, row) => sum + row.requests, 0)),
+                avg_latency_ms: endpoints.reduce((sum, row) => sum + row.avg_latency_ms * row.requests, 0) / Math.max(1, endpoints.reduce((sum, row) => sum + row.requests, 0)),
+                tokens: endpoints.reduce((sum, row) => sum + row.tokens, 0),
+                error_rate: endpoints.reduce((sum, row) => sum + row.error_rate * row.requests, 0) / Math.max(1, endpoints.reduce((sum, row) => sum + row.requests, 0)),
+              }]}
               onRowClick={(row) => setSelectedRoute(row.route)}
               getRowKey={(row) => row.route}
             />

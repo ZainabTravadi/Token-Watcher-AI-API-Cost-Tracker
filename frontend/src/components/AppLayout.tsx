@@ -26,24 +26,21 @@ export default function AppLayout({ children, title, meta }: { children: ReactNo
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Global Status Header */}
       <GlobalStatusHeader />
 
-        {/* User bar */}
-        <div className="border-b border-gray-200 bg-white">
+        <div className="border-b border-hairline bg-background">
           <div className="max-w-[1320px] mx-auto px-4 sm:px-6 lg:px-8 h-10 flex items-center justify-end">
-            {/* User menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2 text-xs">
-                  {user?.email}
+                <Button variant="ghost" size="sm" className="h-8 gap-2 px-2 font-mono text-[11px] text-muted-foreground hover:bg-secondary/50 hover:text-foreground">
+                  <span className="max-w-[220px] truncate">{user?.email}</span>
                   <ChevronDown className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="border-hairline bg-background font-mono text-xs shadow-none">
+                <DropdownMenuLabel className="max-w-[260px] truncate font-normal text-muted-foreground">{user?.email}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                <DropdownMenuItem onClick={handleLogout} className="text-negative focus:bg-secondary/70 focus:text-negative">
                   <LogOut className="h-4 w-4 mr-2" />
                   Logout
                 </DropdownMenuItem>

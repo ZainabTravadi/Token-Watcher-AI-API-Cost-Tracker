@@ -64,6 +64,22 @@ function metadataValue(value: unknown): string | null {
   return stringifyJson(value);
 }
 
+function replayPayload(metadata: ParsedMetadata | null, request: TelemetryRow | null): unknown {
+  if (!request) return {};
+  const properties = metadata && typeof metadata.properties === "object" && metadata.properties !== null
+    ? metadata.properties as Record<string, unknown>
+    : {};
+
+  return {
+    route: request.route,
+    provider: request.provider,
+    model: request.model,
+    input_tokens: request.input_tokens,
+    output_tokens: request.output_tokens,
+    metadata: properties.request ?? properties.payload ?? properties.body ?? metadata?.properties ?? metadata?.raw ?? null,
+  };
+}
+
 function DetailMetric({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -80,6 +96,7 @@ export function RequestDetailDrawer({ request, open, onClose }: RequestDetailDra
   const identity = metadataValue(metadata?.identity);
   const metadataJson = metadata ? stringifyJson(metadata) : "{}";
   const rawJson = request ? stringifyJson(request) : "{}";
+  const replayJson = stringifyJson(replayPayload(metadata, request));
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -102,8 +119,12 @@ export function RequestDetailDrawer({ request, open, onClose }: RequestDetailDra
 
           <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div>
-              <h3 className="label-mono mb-2">Request</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="label-mono mb-2">Request</h3>
+                <Button size="sm" variant="ghost" onClick={() => copyToClipboard(replayJson)}>Copy request</Button>
+              </div>
               <div className="border-t border-hairline pt-3 space-y-2 text-sm font-mono">
+                <div>ID: {request.id}</div>
                 <div>Route: {request.route}</div>
                 <div>Model: {request.model}</div>
                 <div>Provider: {request.provider}</div>
@@ -169,6 +190,16 @@ export function RequestDetailDrawer({ request, open, onClose }: RequestDetailDra
 
           <section>
             <div className="flex items-center justify-between">
+              <h3 className="label-mono mb-2">Replay payload</h3>
+              <Button size="sm" variant="ghost" onClick={() => copyToClipboard(replayJson)}>Copy JSON</Button>
+            </div>
+            <div className="border-t border-hairline bg-secondary/20 p-3 pt-3 overflow-auto text-xs font-mono leading-6 max-h-72">
+              <pre className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: highlightJson(replayJson) }} />
+            </div>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between">
               <h3 className="label-mono mb-2">Metadata JSON</h3>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" onClick={() => copyToClipboard(metadataJson)}>Copy metadata</Button>
@@ -179,17 +210,18 @@ export function RequestDetailDrawer({ request, open, onClose }: RequestDetailDra
             </div>
           </section>
 
-          <section>
+          <details open>
+            <summary className="label-mono mb-2 cursor-pointer">Raw response row</summary>
             <div className="flex items-center justify-between">
-              <h3 className="label-mono mb-2">Raw row</h3>
+              <h3 className="sr-only">Raw row</h3>
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="ghost" onClick={() => copyToClipboard(rawJson)}>Copy raw</Button>
+                <Button size="sm" variant="ghost" onClick={() => copyToClipboard(rawJson)}>Copy JSON</Button>
               </div>
             </div>
             <div className="border-t border-hairline bg-secondary/20 p-3 pt-3 overflow-auto text-xs font-mono leading-6 max-h-72">
               <pre className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: highlightJson(rawJson) }} />
             </div>
-          </section>
+          </details>
         </div>
       )}
     </Drawer>

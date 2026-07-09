@@ -6,6 +6,9 @@ import { getUserLastLogoutAt, getUserWorkspaces, getWorkspace, verifyApiKey } fr
 export interface AuthenticatedRequest extends Request {
   userId?: string;
   workspaceId?: string;
+  authMethod?: "cookie" | "bearer";
+  sessionIssuedAt?: number;
+  sessionExpiresAt?: number;
 }
 
 /**
@@ -17,8 +20,10 @@ export async function authenticateUser(req: AuthenticatedRequest, res: Response,
     
     // Check for JWT in cookie or Authorization header only
     let token = req.cookies?.["tokenwatch_auth"];
+    let authMethod: "cookie" | "bearer" = "cookie";
     if (!token && req.headers.authorization?.startsWith("Bearer ")) {
       token = req.headers.authorization.slice(7);
+      authMethod = "bearer";
     }
 
     if (!token) {
@@ -39,6 +44,9 @@ export async function authenticateUser(req: AuthenticatedRequest, res: Response,
     }
 
     req.userId = decoded.userId;
+    req.authMethod = authMethod;
+    req.sessionIssuedAt = decoded.iat * 1000;
+    req.sessionExpiresAt = decoded.exp * 1000;
     next();
   } catch (error) {
     res.status(500).json({ error: "Authentication error" });

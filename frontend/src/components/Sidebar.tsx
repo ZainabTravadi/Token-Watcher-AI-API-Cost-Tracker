@@ -155,7 +155,7 @@ export function Sidebar() {
               className={`py-1.5 text-sm border-l-2 pl-3 -ml-px transition-all duration-150 ${
                 isActive
                   ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-hairline"
               }`}
               aria-current={isActive ? "page" : undefined}
             >
@@ -173,7 +173,7 @@ export function Sidebar() {
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-0 h-auto font-normal text-sm hover:bg-gray-100 transition-colors duration-150 disabled:opacity-50"
+                className="w-full justify-start p-0 h-auto font-normal text-sm hover:bg-secondary/60 transition-colors duration-150 disabled:opacity-50"
                 disabled={isSwitching}
               >
                 <span className="truncate">{currentWorkspace.name}</span>
@@ -189,8 +189,8 @@ export function Sidebar() {
                 <DropdownMenuItem
                   key={ws.id}
                   onClick={() => handleWorkspaceChange(ws.id)}
-                  className={`transition-colors duration-150 ${
-                    currentWorkspace.id === ws.id ? "bg-gray-100" : ""
+                  className={`font-mono text-xs transition-colors duration-150 ${
+                    currentWorkspace.id === ws.id ? "bg-secondary/70" : ""
                   }`}
                   disabled={isSwitching}
                 >
@@ -207,7 +207,7 @@ export function Sidebar() {
           <button
             onClick={handleCopyWorkspaceId}
             disabled={isSwitching}
-            className="w-full text-left text-xs text-muted-foreground font-mono mt-2 py-1 px-0 rounded transition-colors duration-150 hover:text-foreground hover:bg-gray-50 disabled:opacity-50 flex items-center justify-between group"
+            className="group mt-2 flex w-full items-center justify-between px-0 py-1 text-left font-mono text-xs text-muted-foreground transition-colors duration-150 hover:bg-secondary/40 hover:text-foreground disabled:opacity-50"
             title={currentWorkspace.id}
             aria-label={`Copy workspace ID: ${currentWorkspace.id}`}
           >

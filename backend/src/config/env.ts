@@ -13,6 +13,9 @@ export interface AppConfig {
   jwtSecret: string;
   corsOrigin: string[];
   enableSimulators: boolean;
+  resendApiKey: string | null;
+  resendFromEmail: string;
+  appUrl: string;
 }
 
 const DEV_JWT_SECRET = "dev-secret-key-please-set-in-production";
@@ -67,6 +70,9 @@ export function getConfig(): AppConfig {
     databasePath: process.env.DATABASE_PATH ?? "./data/tokenwatch.sqlite",
     jwtSecret,
     corsOrigin,
-    enableSimulators
+    enableSimulators,
+    resendApiKey: process.env.RESEND_API_KEY ?? null,
+    resendFromEmail: process.env.RESEND_FROM_EMAIL ?? "TokenWatcher <notifications@tokenwatch.local>",
+    appUrl: process.env.APP_URL ?? "http://localhost:8080"
   };
 }

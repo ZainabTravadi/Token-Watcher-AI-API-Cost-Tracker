@@ -45,13 +45,19 @@ export const ExportButton = memo(function ExportButton({
   disabled,
   workspaceId,
   dateRange,
-  filters 
+  filters,
+  filenamePrefix = "overview",
+  exportPath = "/api/telemetry/export-pdf",
+  queryParams,
 }: { 
   rows: ExportRow[]
   disabled?: boolean
   workspaceId?: string
   dateRange?: DateRangeValue
   filters?: OverviewFilters
+  filenamePrefix?: string
+  exportPath?: string
+  queryParams?: URLSearchParams
 }) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
@@ -60,30 +66,34 @@ export const ExportButton = memo(function ExportButton({
     const body = rows.map((row) =>
       headers.map((header) => csvEscape(header === "timestamp" ? new Date(row.timestamp).toISOString() : row[header as keyof ExportRow])).join(","),
     );
-    downloadFile(`overview-${timestamp}.csv`, "text/csv;charset=utf-8", [headers.join(","), ...body].join("\n"));
+    downloadFile(`${filenamePrefix}-${timestamp}.csv`, "text/csv;charset=utf-8", [headers.join(","), ...body].join("\n"));
   };
 
   const exportJson = () => {
-    downloadFile(`overview-${timestamp}.json`, "application/json;charset=utf-8", JSON.stringify(rows, null, 2));
+    downloadFile(`${filenamePrefix}-${timestamp}.json`, "application/json;charset=utf-8", JSON.stringify(rows, null, 2));
   };
 
-  const exportPdf = async () => {
+  const exportRemote = async (format: "csv" | "json" | "pdf") => {
     try {
-      // Build query parameters from filters
-      const params = new URLSearchParams();
-      if (workspaceId) params.append("workspaceId", workspaceId);
-      if (dateRange) {
-        params.append("from", dateRange.from);
-        params.append("to", dateRange.to);
+      const params = queryParams ? new URLSearchParams(queryParams) : new URLSearchParams();
+      if (!queryParams) {
+        if (workspaceId) params.append("workspaceId", workspaceId);
+        if (dateRange) {
+          params.append("from", dateRange.from);
+          params.append("to", dateRange.to);
+        }
+        if (filters) {
+          filters.provider.forEach(p => params.append("provider", p));
+          filters.model.forEach(m => params.append("model", m));
+          filters.endpoint.forEach(e => params.append("endpoint", e));
+          filters.status.forEach(s => params.append("status", s));
+        }
       }
-      if (filters) {
-        filters.provider.forEach(p => params.append("provider", p));
-        filters.model.forEach(m => params.append("model", m));
-        filters.endpoint.forEach(e => params.append("endpoint", e));
-        filters.status.forEach(s => params.append("status", s));
+      if (exportPath.includes("/requests/export")) {
+        params.set("format", format);
       }
 
-      const response = await authFetch(`/api/telemetry/export-pdf?${params}`, {
+      const response = await authFetch(`${exportPath}?${params}`, {
         method: "GET"
       });
 
@@ -92,11 +102,13 @@ export const ExportButton = memo(function ExportButton({
       }
 
       const blob = await response.blob();
-      downloadFileBlob(`overview-${timestamp}.pdf`, blob);
+      downloadFileBlob(`${filenamePrefix}-${timestamp}.${format}`, blob);
     } catch (error) {
-      console.error("PDF export error:", error);
+      console.error("Export error:", error);
     }
   };
+
+  const shouldUseRemoteExport = exportPath.includes("/requests/export");
 
   return (
     <Popover>
@@ -108,9 +120,9 @@ export const ExportButton = memo(function ExportButton({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-44 p-2">
         <div className="grid gap-1">
-          <Button type="button" variant="ghost" size="sm" onClick={exportCsv} className="justify-start">CSV</Button>
-          <Button type="button" variant="ghost" size="sm" onClick={exportJson} className="justify-start">JSON</Button>
-          <Button type="button" variant="ghost" size="sm" onClick={exportPdf} className="justify-start">PDF</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={shouldUseRemoteExport ? () => exportRemote("csv") : exportCsv} className="justify-start">CSV</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={shouldUseRemoteExport ? () => exportRemote("json") : exportJson} className="justify-start">JSON</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => exportRemote("pdf")} className="justify-start">PDF</Button>
         </div>
       </PopoverContent>
     </Popover>

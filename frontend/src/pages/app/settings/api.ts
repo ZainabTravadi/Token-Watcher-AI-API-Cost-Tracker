@@ -33,7 +33,16 @@ export async function updateWorkspaceSettings(
   body: {
     alert_on_high_cost?: boolean;
     alert_on_errors?: boolean;
+    alert_on_latency?: boolean;
+    daily_digest?: boolean;
+    weekly_report?: boolean;
     alert_cost_threshold?: number;
+    latency_threshold_ms?: number;
+    notification_email?: string | null;
+    daily_digest_time?: string;
+    digest_timezone?: string;
+    weekly_report_day?: string;
+    weekly_report_time?: string;
   }
 ) {
   const response = await authFetch(`/api/workspaces/${workspaceId}/settings`, {
@@ -48,9 +57,37 @@ export async function updateWorkspaceSettings(
   return response.json();
 }
 
-export async function rotateWorkspaceApiKey(workspaceId: string): Promise<{ apiKey: string }> {
+export interface NotificationSendResponse {
+  ok: true;
+  kind: string;
+  recipient: string;
+  sentAt: number;
+  email: { id: string | null; provider: "resend"; simulated: boolean };
+}
+
+export interface WorkspaceUsageResponse {
+  telemetry_count: number;
+  current_month_spend: number;
+  api_version: string;
+  sdk_version: string;
+}
+
+export interface WebhookTestResponse {
+  success: boolean;
+  status: "success" | "failure";
+  responseCode: number | null;
+  responseTimeMs: number;
+  testedAt: number;
+  error?: string;
+}
+
+export async function rotateWorkspaceApiKey(
+  workspaceId: string,
+  confirmation: string
+): Promise<{ apiKey: string; apiKeyMeta?: { id: string; created_at: number; revoked_at: number | null; last_rotated_at?: number | null } }> {
   const response = await authFetch(`/api/workspaces/${workspaceId}/api-keys/regenerate`, {
     method: "POST",
+    body: JSON.stringify({ confirmation }),
   });
 
   if (!response.ok) {
@@ -60,12 +97,61 @@ export async function rotateWorkspaceApiKey(workspaceId: string): Promise<{ apiK
   return response.json();
 }
 
-export async function deleteWorkspaceById(workspaceId: string): Promise<void> {
+export async function deleteWorkspaceById(workspaceId: string, confirmation: string): Promise<void> {
   const response = await authFetch(`/api/workspaces/${workspaceId}`, {
     method: "DELETE",
+    body: JSON.stringify({ confirmation }),
   });
 
   if (!response.ok) {
     throw new Error(await parseApiError(response, "Failed to delete workspace"));
   }
+}
+
+export async function fetchWorkspaceUsage(workspaceId: string): Promise<WorkspaceUsageResponse> {
+  const response = await authFetch(`/api/workspaces/${workspaceId}/usage`);
+
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Failed to load workspace usage"));
+  }
+
+  return response.json();
+}
+
+export async function testWorkspaceWebhook(workspaceId: string, url: string): Promise<WebhookTestResponse> {
+  const response = await authFetch(`/api/workspaces/${workspaceId}/webhook/test`, {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Failed to test webhook"));
+  }
+
+  return response.json();
+}
+
+export async function sendTestEmail(workspaceId: string, email: string): Promise<NotificationSendResponse> {
+  const response = await authFetch(`/api/workspaces/${workspaceId}/notifications/test-email`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Failed to send test email"));
+  }
+
+  return response.json();
+}
+
+export async function sendDailyDigest(workspaceId: string): Promise<NotificationSendResponse> {
+  const response = await authFetch(`/api/workspaces/${workspaceId}/notifications/send-daily-digest`, { method: "POST" });
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to send daily digest"));
+  return response.json();
+}
+
+export async function sendWeeklyReport(workspaceId: string): Promise<NotificationSendResponse> {
+  const response = await authFetch(`/api/workspaces/${workspaceId}/notifications/send-weekly-report`, { method: "POST" });
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to send weekly report"));
+  return response.json();
 }

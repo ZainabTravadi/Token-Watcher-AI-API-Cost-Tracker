@@ -137,22 +137,48 @@ export default function DocsPage({ slug }: DocsPageProps) {
 
   return (
     <AppLayout title={doc.title}>
-      <div className="max-w-3xl space-y-10">
-        {doc.sections.map((section) => (
-          <section key={section.heading} className="space-y-3">
-            <h2 className="text-xl font-semibold">{section.heading}</h2>
-            {section.body.map((paragraph) => (
-              <p key={paragraph} className="text-sm leading-6 text-muted-foreground">
-                {paragraph}
-              </p>
+      <div className="grid max-w-5xl gap-10 lg:grid-cols-[180px_1fr]">
+        <aside className="lg:sticky lg:top-28 lg:self-start">
+          <div className="label-mono mb-3">Document map</div>
+          <nav className="border-t border-hairline">
+            {doc.sections.map((section, index) => (
+              <a
+                key={section.heading}
+                href={`#${section.heading.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                className="block border-b border-hairline/60 py-2 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:bg-secondary/70"
+              >
+                {String(index + 1).padStart(2, "0")} / {section.heading}
+              </a>
             ))}
-            {section.code && (
-              <pre className="overflow-x-auto border border-gray-200 bg-gray-50 p-4 text-xs leading-5">
-                <code>{section.code}</code>
-              </pre>
-            )}
-          </section>
-        ))}
+          </nav>
+        </aside>
+
+        <div className="space-y-10">
+          {doc.sections.map((section, index) => (
+            <section key={section.heading} id={section.heading.toLowerCase().replace(/[^a-z0-9]+/g, "-")} className="scroll-mt-28 border-t border-hairline pt-5">
+              <div className="label-mono mb-2">{String(index + 1).padStart(2, "0")} / {slug}</div>
+              <h2 className="font-serif text-2xl">{section.heading}</h2>
+              <div className="mt-4 space-y-3">
+                {section.body.map((paragraph) => (
+                  <p key={paragraph} className="text-sm leading-6 text-muted-foreground">
+                    {paragraph}
+                  </p>
+                ))}
+              </div>
+              {section.code && (
+                <div className="mt-5 border border-hairline bg-surface">
+                  <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
+                    <span className="label-mono">example</span>
+                    <span className="font-mono text-[11px] text-muted-foreground">copy-ready</span>
+                  </div>
+                  <pre className="overflow-x-auto p-4 font-mono text-xs leading-6">
+                    <code>{section.code}</code>
+                  </pre>
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
       </div>
     </AppLayout>
   );

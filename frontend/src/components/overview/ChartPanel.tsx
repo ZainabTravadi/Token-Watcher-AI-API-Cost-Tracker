@@ -27,11 +27,11 @@ export const ChartPanel = memo(function ChartPanel({
           <Skeleton className="h-full w-full" />
         </div>
       ) : isError ? (
-        <div className="flex h-[260px] items-center justify-center rounded-md border border-destructive/30 bg-destructive/5 text-xs text-destructive">
+        <div className="flex h-[260px] items-center justify-center border border-destructive/30 bg-destructive/5 text-xs text-destructive">
           Could not load chart data.
         </div>
       ) : isEmpty ? (
-        <div className="flex h-[260px] items-center justify-center rounded-md border border-dashed border-hairline px-6 text-center text-xs text-muted-foreground">
+        <div className="flex h-[260px] items-center justify-center border border-dashed border-hairline px-6 text-center text-xs text-muted-foreground">
           No telemetry matches this date range and filter set.
         </div>
       ) : (

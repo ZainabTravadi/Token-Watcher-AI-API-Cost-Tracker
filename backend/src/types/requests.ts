@@ -33,8 +33,23 @@ export interface RequestLogQuery {
   limit?: number;
   cursor?: string;
   route?: string;
+  routes?: string[];
   model?: string[];
   provider?: string;
+  providers?: string[];
+  workspace?: string[];
+  status?: string[];
+  search?: string;
+  from?: number;
+  to?: number;
+  minLatency?: number;
+  maxLatency?: number;
+  minCost?: number;
+  maxCost?: number;
+  minTokens?: number;
+  maxTokens?: number;
+  sortBy?: "timestamp" | "cost" | "latency" | "tokens" | "provider" | "model" | "endpoint" | "status";
+  sortDir?: "asc" | "desc";
 }
 
 export interface RequestLogResponse {

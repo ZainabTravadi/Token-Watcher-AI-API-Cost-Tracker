@@ -2,6 +2,7 @@ import { Suspense, lazy, useMemo, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import Drawer from "@/components/Drawer";
 import { DataTable } from "@/components/DataTable";
+import { OperationalSummary, type OperationalSummaryItem } from "@/components/OperationalSummary";
 import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -215,6 +216,20 @@ export default function Models() {
     acc[row.provider].errors += Math.round(row.error_rate * row.requests);
     return acc;
   }, {});
+  const providerList = Object.values(providerRows).sort((a, b) => b.cost_usd - a.cost_usd);
+  const mostExpensiveModel = [...modelRows].sort((a, b) => b.cost_usd - a.cost_usd)[0] ?? null;
+  const highestLatencyModel = [...modelRows].sort((a, b) => b.avg_latency_ms - a.avg_latency_ms)[0] ?? null;
+  const fastestProvider = [...providerList].filter((row) => row.requests > 0).sort((a, b) => (a.latency / a.requests) - (b.latency / b.requests))[0] ?? null;
+  const efficientProvider = [...providerList].filter((row) => row.requests > 0).sort((a, b) => (a.cost_usd / a.requests) - (b.cost_usd / b.requests))[0] ?? null;
+  const lastActivityAt = filteredRows.length > 0 ? Math.max(...filteredRows.map((row) => row.timestamp)) : null;
+  const summaryItems: OperationalSummaryItem[] = [
+    { label: "Tracked models", value: fmtNum(modelRows.length), detail: `${fmtNum(providerList.length)} providers` },
+    { label: "Most expensive", value: mostExpensiveModel?.model ?? "none", detail: mostExpensiveModel ? fmtUSD(mostExpensiveModel.cost_usd) : "no model spend" },
+    { label: "Highest latency", value: highestLatencyModel?.model ?? "none", detail: highestLatencyModel ? fmtLatency(highestLatencyModel.avg_latency_ms) : "no latency data", tone: highestLatencyModel && highestLatencyModel.avg_latency_ms > 2500 ? "warn" : "neutral" },
+    { label: "Fastest provider", value: fastestProvider?.provider ?? "none", detail: fastestProvider ? fmtLatency(fastestProvider.latency / fastestProvider.requests) : "no provider data", tone: "good" },
+    { label: "Most efficient", value: efficientProvider?.provider ?? "none", detail: efficientProvider ? `${fmtUSD(efficientProvider.cost_usd / efficientProvider.requests)} avg` : "no cost data" },
+    { label: "Last activity", value: lastActivityAt ? new Date(lastActivityAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "none", detail: lastActivityAt ? new Date(lastActivityAt).toLocaleDateString() : "waiting for telemetry" },
+  ];
   const exportRows: ExportRow[] = filteredRows.map((row) => ({
     timestamp: row.timestamp,
     workspace_id: row.workspace_id,
@@ -269,6 +284,8 @@ export default function Models() {
           </div>
         </div>
 
+        <OperationalSummary items={summaryItems} />
+
         <div className="grid grid-cols-1 gap-6 pb-8 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard title="Requests" value={fmtNum(filteredRows.length)} previousValue="filtered" changePercent={0} sparkline={trend.map((point) => point.requests)} tooltip="Visible model requests." isEmpty={filteredRows.length === 0} />
           <KpiCard title="Total Tokens" value={fmtCompactNum(totalTokens)} previousValue="filtered" changePercent={0} sparkline={trend.map((point) => point.tokens)} tooltip="Input and output tokens for visible model traffic." isEmpty={filteredRows.length === 0} />
@@ -302,6 +319,14 @@ export default function Models() {
               { key: "requests", label: "Requests", align: "right", render: (row) => fmtNum(row.requests) },
             ]}
             rows={Object.values(providerRows).sort((a, b) => b.cost_usd - a.cost_usd)}
+            summaryRows={[{
+              provider: "Provider total",
+              requests: providerList.reduce((sum, row) => sum + row.requests, 0),
+              tokens: providerList.reduce((sum, row) => sum + row.tokens, 0),
+              cost_usd: providerList.reduce((sum, row) => sum + row.cost_usd, 0),
+              latency: providerList.reduce((sum, row) => sum + row.latency, 0),
+              errors: providerList.reduce((sum, row) => sum + row.errors, 0),
+            }]}
             getRowKey={(row) => row.provider}
           />
         </section>
@@ -320,6 +345,18 @@ export default function Models() {
                 { key: "cost_usd", label: "Cost", align: "right", render: (row) => fmtUSD(row.cost_usd) },
               ]}
               rows={modelRows}
+              summaryRows={[{
+                key: "summary",
+                model: "Model total",
+                provider: "",
+                requests: modelRows.reduce((sum, row) => sum + row.requests, 0),
+                tokens: modelRows.reduce((sum, row) => sum + row.tokens, 0),
+                input_tokens: modelRows.reduce((sum, row) => sum + row.input_tokens, 0),
+                output_tokens: modelRows.reduce((sum, row) => sum + row.output_tokens, 0),
+                cost_usd: modelRows.reduce((sum, row) => sum + row.cost_usd, 0),
+                avg_latency_ms: modelRows.length ? modelRows.reduce((sum, row) => sum + row.avg_latency_ms * row.requests, 0) / Math.max(1, modelRows.reduce((sum, row) => sum + row.requests, 0)) : 0,
+                error_rate: modelRows.length ? modelRows.reduce((sum, row) => sum + row.error_rate * row.requests, 0) / Math.max(1, modelRows.reduce((sum, row) => sum + row.requests, 0)) : 0,
+              }]}
               onRowClick={(row) => setSelectedKey(row.key)}
               getRowKey={(row) => row.key}
             />

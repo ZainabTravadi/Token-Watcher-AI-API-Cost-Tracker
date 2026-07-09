@@ -4,6 +4,7 @@ import AppLayout from "@/components/AppLayout";
 import { BudgetAlertCard } from "@/components/BudgetAlertCard";
 import { RequestDetailDrawer } from "@/components/RequestDetailDrawer";
 import { SdkOnboarding } from "@/components/SdkOnboarding";
+import { OperationalSummary, type OperationalSummaryItem } from "@/components/OperationalSummary";
 import { PageErrorState, PageLoadingState } from "@/components/AsyncState";
 import { ChartPanel } from "@/components/overview/ChartPanel";
 import { DateRangeFilter } from "@/components/overview/DateRangeFilter";
@@ -88,6 +89,13 @@ function groupCost(rows: TelemetryRow[], key: (row: TelemetryRow) => string, lim
   return [...grouped.values()].sort((a, b) => b.value - a.value).slice(0, limit);
 }
 
+function selectedDaySpan(rows: TelemetryRow[]): number {
+  if (rows.length === 0) return 1;
+  const from = Math.min(...rows.map((row) => row.timestamp));
+  const to = Math.max(...rows.map((row) => row.timestamp));
+  return Math.max(1, Math.ceil((to - from + 1) / (24 * 60 * 60 * 1000)));
+}
+
 export default function Overview() {
   const { currentWorkspace } = useAuth();
   const { streamStatus, lastTelemetryEventAt } = useStatus();
@@ -139,6 +147,8 @@ export default function Overview() {
     const totalRequests = filteredRows.length;
     const avgCost = totalRequests > 0 ? totalCost / totalRequests : 0;
     const failures = filteredRows.filter((row) => row.error).length;
+    const rateLimited = filteredRows.filter((row) => row.error?.includes("429")).length;
+    const serverErrors = filteredRows.filter((row) => row.error?.includes("500")).length;
     const previousCost = sum(previousRows, (row) => row.cost_usd);
     const previousRequests = previousRows.length;
     const previousAvgCost = previousRequests > 0 ? previousCost / previousRequests : 0;
@@ -150,7 +160,12 @@ export default function Overview() {
       totalCost,
       totalRequests,
       avgCost,
+      avgLatency: totalRequests > 0 ? sum(filteredRows, (row) => row.latency_ms) / totalRequests : 0,
       errorRate: totalRequests > 0 ? failures / totalRequests : 0,
+      successRate: totalRequests > 0 ? (totalRequests - failures) / totalRequests : 0,
+      failures,
+      rateLimited,
+      serverErrors,
       previousCost,
       previousRequests,
       previousAvgCost,
@@ -199,9 +214,23 @@ export default function Overview() {
   );
 
   const recentRows = filteredRows.slice(0, 8);
-  const budget = overview?.budget ?? Number(currentWorkspace?.settings?.alert_cost_threshold) ?? 0;
+  const budget = overview?.budget ?? Number(currentWorkspace?.monthly_budget ?? 0);
   const budgetUsedPercent = budget > 0 ? Math.min(100, Math.round((metrics.totalCost / budget) * 100)) : 0;
   const budgetRemaining = Math.max(0, budget - metrics.totalCost);
+  const daySpan = selectedDaySpan(filteredRows);
+  const costVelocity = metrics.totalCost / daySpan;
+  const projectedMonthlySpend = costVelocity * 30;
+  const budgetEfficiency = budget === 0 || projectedMonthlySpend <= budget ? 1 : budget / projectedMonthlySpend;
+  const efficiencyScore = Math.round(Math.max(0, Math.min(100, (metrics.successRate * 70) + (budgetEfficiency * 30))));
+  const healthTone = metrics.errorRate > 0.05 || streamStatus === "offline" ? "bad" : metrics.errorRate > 0.01 || streamStatus === "reconnecting" ? "warn" : "good";
+  const summaryItems: OperationalSummaryItem[] = [
+    { label: "Spend", value: fmtUSD(metrics.totalCost), detail: `${fmtUSD(budgetRemaining)} budget remaining`, tone: budget > 0 && metrics.totalCost > budget ? "bad" : "neutral" },
+    { label: "Throughput", value: fmtCompactNum(metrics.totalRequests), detail: `${fmtPercent(metrics.successRate)} success`, tone: metrics.successRate < 0.95 ? "warn" : "good" },
+    { label: "Health", value: streamStatus, detail: `${fmtPercent(metrics.errorRate)} error rate`, tone: healthTone },
+    { label: "Forecast", value: fmtUSD(projectedMonthlySpend), detail: "projected monthly spend", tone: budget > 0 && projectedMonthlySpend > budget ? "warn" : "neutral" },
+    { label: "Efficiency", value: `${efficiencyScore}/100`, detail: `${fmtUSD(metrics.avgCost)} avg request`, tone: efficiencyScore < 70 ? "warn" : "good" },
+    { label: "Latency", value: metrics.avgLatency ? `${Math.round(metrics.avgLatency)}ms` : "0ms", detail: "average response", tone: metrics.avgLatency > 2500 ? "warn" : "neutral" },
+  ];
   const hasWorkspaceTelemetry =
     Boolean(analytics.data) &&
     ((analytics.data?.dimensions.models.length ?? 0) > 0 ||
@@ -258,49 +287,51 @@ export default function Overview() {
           </div>
         </div>
 
+        <OperationalSummary items={summaryItems} />
+
         <div className="grid grid-cols-1 gap-6 pb-8 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
-            title="Total Cost"
+            title="Financial State"
             value={fmtUSD(metrics.totalCost)}
-            previousValue={fmtUSD(metrics.previousCost)}
+            previousValue={`${fmtUSD(budgetRemaining)} remaining`}
             changePercent={percentChange(metrics.totalCost, metrics.previousCost)}
             sparkline={sparkline}
-            tooltip="Total visible telemetry cost after date range and global filters."
+            tooltip="Visible spend, budget remaining, and financial pressure after filters."
             isEmpty={!hasData}
             onClick={() => navigate(`/app/requests?sort=cost&from=${dateRange.from}&to=${dateRange.to}`)}
           />
           <KpiCard
-            title="Requests"
+            title="Request Pipeline"
             value={fmtCompactNum(metrics.totalRequests)}
-            previousValue={fmtCompactNum(metrics.previousRequests)}
+            previousValue={`${fmtNum(metrics.failures)} failed`}
             changePercent={percentChange(metrics.totalRequests, metrics.previousRequests)}
             sparkline={requestSparkline}
-            tooltip="Visible request volume for the selected date range."
+            tooltip="Completed and failed request volume for the selected date range."
             isEmpty={!hasData}
             onClick={() => navigate(`/app/requests?from=${dateRange.from}&to=${dateRange.to}`)}
           />
           <KpiCard
-            title="Avg Cost / Request"
-            value={metrics.totalRequests > 0 ? fmtUSD(metrics.avgCost) : "$0.00"}
-            previousValue={metrics.previousRequests > 0 ? fmtUSD(metrics.previousAvgCost) : "$0.00"}
+            title="Cost Velocity"
+            value={fmtUSD(costVelocity)}
+            previousValue={`${fmtUSD(projectedMonthlySpend)} forecast`}
             changePercent={percentChange(metrics.avgCost, metrics.previousAvgCost)}
             sparkline={sparkline}
-            tooltip="Average cost per visible request."
+            tooltip="Average daily spend in the selected range and projected monthly spend."
             isEmpty={!hasData}
             onClick={() => navigate(`/app/requests?sort=avgCost&from=${dateRange.from}&to=${dateRange.to}`)}
           />
           <KpiCard
-            title="Errors"
+            title="System Health"
             value={fmtPercent(metrics.errorRate)}
-            previousValue={fmtPercent(metrics.previousErrorRate)}
+            previousValue={`${metrics.rateLimited} limited / ${metrics.serverErrors} server`}
             changePercent={percentChange(metrics.errorRate, metrics.previousErrorRate)}
             sparkline={chartData.timeline.map((point) => point.requests)}
-            tooltip="Error rate across visible requests."
+            tooltip="Error rate across visible requests, including rate limit and server failures."
             isEmpty={!hasData}
             onClick={() => navigate(`/app/requests?status=ERR&from=${dateRange.from}&to=${dateRange.to}`)}
           />
           <KpiCard
-            title="Budget Usage"
+            title="Budget Remaining"
             value={`${budgetUsedPercent}%`}
             previousValue={`${Math.max(0, Math.round(percentChange(metrics.previousCost, budget || 1)))}%`}
             changePercent={percentChange(metrics.totalCost, metrics.previousCost)}
@@ -364,7 +395,7 @@ export default function Overview() {
                   <li
                     key={row.id}
                     onClick={() => setSelectedRequest(row)}
-                    className="grid cursor-pointer grid-cols-12 items-center gap-2 border-b border-hairline/60 py-2 text-xs transition hover:bg-secondary/40 hover:shadow-sm"
+                    className="grid cursor-pointer grid-cols-12 items-center gap-2 border-b border-hairline/60 py-2 text-xs transition-colors hover:bg-secondary/40"
                   >
                     <span className="col-span-1 flex items-center justify-start">
                       <span className={`mr-2 h-2 w-2 rounded-full ${status === "200" ? "bg-green-500" : "bg-amber-600"}`} />

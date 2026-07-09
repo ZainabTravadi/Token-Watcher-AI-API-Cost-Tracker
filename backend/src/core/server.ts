@@ -6,6 +6,7 @@ import { getTelemetryCount } from "../services/telemetryRepository";
 import { startTelemetrySimulator } from "../services/simulatorService";
 import { startSdkDemo, stopSdkDemo } from "../services/demoRunner";
 import { stopAllSimulators } from "../services/workspaceSimulatorManager";
+import { startNotificationScheduler, stopNotificationScheduler } from "../services/notificationService";
 
 export async function startServer(): Promise<void> {
   const config = getConfig();
@@ -25,6 +26,7 @@ export async function startServer(): Promise<void> {
   const demoProcess = config.enableSimulators ? startSdkDemo(apiUrl) : null;
 
   const app = createApp();
+  startNotificationScheduler();
 
   const server = app.listen(config.port, () => {
     const separator = "─".repeat(62);
@@ -50,6 +52,7 @@ export async function startServer(): Promise<void> {
   // Graceful shutdown
   const gracefulShutdown = () => {
     console.info("\n[server] Shutting down gracefully...");
+    stopNotificationScheduler();
     stopAllSimulators();
     stopSdkDemo();
     server.close(() => {

@@ -151,8 +151,23 @@ export interface RequestLogQuery {
   page?: number;
   limit?: number;
   route?: TelemetryRoute | "all";
+  endpoints?: TelemetryRoute[];
   model?: TelemetryModel[];
   provider?: TelemetryProvider | "all";
+  providers?: TelemetryProvider[];
+  workspace?: string[];
+  status?: string[];
+  search?: string;
+  from?: string;
+  to?: string;
+  minLatency?: number;
+  maxLatency?: number;
+  minCost?: number;
+  maxCost?: number;
+  minTokens?: number;
+  maxTokens?: number;
+  sortBy?: "timestamp" | "cost" | "latency" | "tokens" | "provider" | "model" | "endpoint" | "status";
+  sortDir?: "asc" | "desc";
   cursor?: string;
 }
 
@@ -170,7 +185,24 @@ export interface WorkspaceSettingsResponse {
   workspace_id: string;
   alert_on_high_cost: boolean;
   alert_on_errors: boolean;
+  alert_on_latency: boolean;
+  daily_digest: boolean;
+  weekly_report: boolean;
   alert_cost_threshold: number;
+  latency_threshold_ms: number;
+  notification_email: string | null;
+  email_verified: boolean;
+  last_digest_sent: number | null;
+  last_weekly_report_sent: number | null;
+  last_test_email_sent: number | null;
+  daily_digest_time: string;
+  digest_timezone: string;
+  weekly_report_day: string;
+  weekly_report_time: string;
+  webhook_last_test_at: number | null;
+  webhook_last_status: string | null;
+  webhook_last_response_code: number | null;
+  webhook_last_response_time_ms: number | null;
   updated_at: number;
 }
 
@@ -296,19 +328,34 @@ export async function fetchRequestLog(workspaceId?: string, query: RequestLogQue
   if (query.route && query.route !== "all") params.set("route", query.route);
   if (query.provider && query.provider !== "all") params.set("provider", query.provider);
   if (query.cursor) params.set("cursor", query.cursor);
+  if (query.search) params.set("search", query.search);
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
+  if (query.minLatency !== undefined) params.set("minLatency", String(query.minLatency));
+  if (query.maxLatency !== undefined) params.set("maxLatency", String(query.maxLatency));
+  if (query.minCost !== undefined) params.set("minCost", String(query.minCost));
+  if (query.maxCost !== undefined) params.set("maxCost", String(query.maxCost));
+  if (query.minTokens !== undefined) params.set("minTokens", String(query.minTokens));
+  if (query.maxTokens !== undefined) params.set("maxTokens", String(query.maxTokens));
+  if (query.sortBy) params.set("sortBy", query.sortBy);
+  if (query.sortDir) params.set("sortDir", query.sortDir);
   if (query.model && query.model.length > 0) {
     for (const model of query.model) {
       params.append("model", model);
     }
   }
+  for (const endpoint of query.endpoints ?? []) params.append("endpoint", endpoint);
+  for (const provider of query.providers ?? []) params.append("providers", provider);
+  for (const workspace of query.workspace ?? []) params.append("workspace", workspace);
+  for (const status of query.status ?? []) params.append("status", status);
 
   const response = await apiFetch<{ data: RequestLogResponse }>(`/api/requests?${params.toString()}`);
   return response.data;
 }
 
-export async function fetchAiInsights(workspaceId?: string): Promise<{ insights: string[]; summary?: any }> {
+export async function fetchAiInsights(workspaceId?: string): Promise<{ insights: string[]; summary?: unknown }> {
   const body = workspaceId ? { workspaceId } : {};
-  const response = await apiFetch<{ data: { insights: string[]; summary?: any } }>(`/api/ai/insights`, { method: "POST", body: JSON.stringify(body) });
+  const response = await apiFetch<{ data: { insights: string[]; summary?: unknown } }>(`/api/ai/insights`, { method: "POST", body: JSON.stringify(body) });
   return response.data;
 }
 
@@ -387,9 +434,37 @@ export function apiBaseUrl(): string {
 export function useRequestLogQuery(workspaceId?: string, query: RequestLogQuery = {}) {
   const streamStatus = useTelemetryStreamStatus();
   const modelsKey = (query.model ?? []).slice().sort().join(",");
+  const endpointsKey = (query.endpoints ?? []).slice().sort().join(",");
+  const providersKey = (query.providers ?? []).slice().sort().join(",");
+  const workspaceKey = (query.workspace ?? []).slice().sort().join(",");
+  const statusKey = (query.status ?? []).slice().sort().join(",");
 
   return useQuery<RequestLogResponse>({
-    queryKey: ["request-log", workspaceId, query.page ?? 1, query.limit ?? 50, query.route ?? "all", query.provider ?? "all", modelsKey, query.cursor ?? ""],
+    queryKey: [
+      "request-log",
+      workspaceId,
+      query.page ?? 1,
+      query.limit ?? 50,
+      query.route ?? "all",
+      query.provider ?? "all",
+      endpointsKey,
+      providersKey,
+      modelsKey,
+      workspaceKey,
+      statusKey,
+      query.search ?? "",
+      query.from ?? "",
+      query.to ?? "",
+      query.minLatency ?? "",
+      query.maxLatency ?? "",
+      query.minCost ?? "",
+      query.maxCost ?? "",
+      query.minTokens ?? "",
+      query.maxTokens ?? "",
+      query.sortBy ?? "timestamp",
+      query.sortDir ?? "desc",
+      query.cursor ?? ""
+    ],
     queryFn: () => fetchRequestLog(workspaceId, query),
     refetchInterval: streamStatus === "offline" || streamStatus === "unauthorized" ? 5_000 : false,
     staleTime: 1_000,

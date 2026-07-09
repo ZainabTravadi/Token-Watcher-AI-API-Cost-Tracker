@@ -11,6 +11,14 @@ export interface AuthUser {
   created_at?: number;
 }
 
+export interface AuthSessionInfo {
+  authenticated: boolean;
+  status: "active" | "expired" | "unknown";
+  method: "cookie" | "bearer" | "unknown";
+  issued_at: number | null;
+  expires_at: number | null;
+}
+
 export interface WorkspaceInfo {
   id: string;
   user_id: string;
@@ -19,7 +27,7 @@ export interface WorkspaceInfo {
   webhook_url: string | null;
   created_at: number;
   updated_at: number;
-  apiKey?: { id: string; created_at: number; value?: string } | null;
+  apiKey?: { id: string; created_at: number; revoked_at?: number | null; last_rotated_at?: number | null; value?: string } | null;
   settings?: Record<string, unknown> | null;
 }
 
@@ -27,6 +35,7 @@ interface AuthContextType {
   user: AuthUser | null;
   workspaces: WorkspaceInfo[] | null;
   currentWorkspace: WorkspaceInfo | null;
+  session: AuthSessionInfo | null;
   isAuthReady: boolean;
   isLoading: boolean;
   error: string | null;
@@ -70,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[] | null>(null);
   const [currentWorkspace, setCurrentWorkspaceState] = useState<WorkspaceInfo | null>(null);
+  const [session, setSession] = useState<AuthSessionInfo | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setWorkspaces(null);
     setCurrentWorkspaceState(null);
+    setSession(null);
     setError(null);
     persistWorkspaceId(null);
     resetAuthInvalidation();
@@ -132,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const data = await response.json();
           setUser(data.user);
           setWorkspaces(data.workspaces);
+          setSession(data.session ?? null);
           restoreWorkspace(data.workspaces);
         } else {
           clearSession();
@@ -166,6 +178,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await response.json();
       setUser(data.user);
+      setSession(data.session ?? {
+        authenticated: true,
+        status: "active",
+        method: "cookie",
+        issued_at: Date.now(),
+        expires_at: null,
+      });
 
       if (Array.isArray(data.workspaces) && data.workspaces.length > 0) {
         setWorkspaces(data.workspaces);
@@ -200,6 +219,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await response.json();
       setUser(data.user);
+      setSession(data.session ?? {
+        authenticated: true,
+        status: "active",
+        method: "cookie",
+        issued_at: Date.now(),
+        expires_at: null,
+      });
       if (data.workspace) {
         setWorkspaces([data.workspace]);
         setCurrentWorkspace(data.workspace);
@@ -235,6 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await response.json();
         setUser(data.user);
         setWorkspaces(data.workspaces);
+        setSession(data.session ?? null);
 
         if (currentWorkspace && data.workspaces) {
           const updated = data.workspaces.find((ws: WorkspaceInfo) => ws.id === currentWorkspace.id);
@@ -260,6 +287,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         workspaces,
         currentWorkspace,
+        session,
         isAuthReady,
         isLoading,
         error,

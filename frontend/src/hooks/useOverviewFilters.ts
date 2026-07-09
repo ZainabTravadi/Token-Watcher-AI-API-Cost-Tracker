@@ -71,7 +71,7 @@ export function useOverviewFilters(rows: TelemetryRow[], workspaceId?: string) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const dateRange = useMemo<DateRangeValue>(() => {
-    const preset = (searchParams.get("range") as DateRangePreset | null) ?? "today";
+    const preset = (searchParams.get("range") as DateRangePreset | null) ?? "7d";
     const fallback = getPresetRange(["today", "yesterday", "7d", "30d", "90d", "custom"].includes(preset) ? preset : "today");
     if (preset === "custom") {
       return {

@@ -19,6 +19,16 @@ export interface ExportTelemetryQuery {
   models?: string[];
   endpoints?: string[];
   statuses?: string[];
+  workspaces?: string[];
+  search?: string;
+  minLatency?: number;
+  maxLatency?: number;
+  minCost?: number;
+  maxCost?: number;
+  minTokens?: number;
+  maxTokens?: number;
+  sortBy?: RequestLogQuery["sortBy"];
+  sortDir?: RequestLogQuery["sortDir"];
   limit?: number;
 }
 
@@ -210,24 +220,28 @@ export async function listRequestLog(workspaceId: string, query: RequestLogQuery
   const db = getDatabase();
   const page = Math.max(1, Math.trunc(query.page ?? 1));
   const limit = Math.min(200, Math.max(1, Math.trunc(query.limit ?? 50)));
-  const route = query.route && query.route !== "all" ? query.route : undefined;
-  const provider = query.provider && query.provider !== "all" ? query.provider : undefined;
+  const routes = [...(query.routes ?? []), ...(query.route && query.route !== "all" ? [query.route] : [])].filter(Boolean);
+  const providers = [...(query.providers ?? []), ...(query.provider && query.provider !== "all" ? [query.provider] : [])].filter(Boolean);
   const models = (query.model ?? []).filter(Boolean);
+  const workspaces = (query.workspace ?? []).filter(Boolean);
+  const statuses = (query.status ?? []).filter(Boolean);
+  const search = query.search?.trim();
+  const sort = getRequestSort(query.sortBy, query.sortDir);
 
   const filters: string[] = ["workspace_id = ?"];
   const params: Array<string | number> = [workspaceId];
   const countParams: Array<string | number> = [workspaceId];
 
-  if (route) {
-    filters.push("route = ?");
-    params.push(route);
-    countParams.push(route);
+  if (routes.length > 0) {
+    filters.push(`route IN (${routes.map(() => "?").join(", ")})`);
+    params.push(...routes);
+    countParams.push(...routes);
   }
 
-  if (provider) {
-    filters.push("provider = ?");
-    params.push(provider);
-    countParams.push(provider);
+  if (providers.length > 0) {
+    filters.push(`provider IN (${providers.map(() => "?").join(", ")})`);
+    params.push(...providers);
+    countParams.push(...providers);
   }
 
   if (models.length > 0) {
@@ -236,8 +250,34 @@ export async function listRequestLog(workspaceId: string, query: RequestLogQuery
     countParams.push(...models);
   }
 
+  if (workspaces.length > 0) {
+    filters.push(`workspace_id IN (${workspaces.map(() => "?").join(", ")})`);
+    params.push(...workspaces);
+    countParams.push(...workspaces);
+  }
+
+  appendStatusFilters(filters, params, countParams, statuses);
+  appendRangeFilter(filters, params, countParams, "timestamp", query.from, query.to);
+  appendRangeFilter(filters, params, countParams, "latency_ms", query.minLatency, query.maxLatency);
+  appendRangeFilter(filters, params, countParams, "cost_usd", query.minCost, query.maxCost);
+  appendRangeFilter(filters, params, countParams, "total_tokens", query.minTokens, query.maxTokens);
+
+  if (search) {
+    const normalizedSearch = `%${search.toLowerCase()}%`;
+    filters.push(`(
+      LOWER(route) LIKE ?
+      OR LOWER(model) LIKE ?
+      OR LOWER(provider) LIKE ?
+      OR CAST(id AS TEXT) LIKE ?
+      OR LOWER(COALESCE(error, '')) LIKE ?
+      OR LOWER(COALESCE(metadata::text, '')) LIKE ?
+    )`);
+    params.push(normalizedSearch, normalizedSearch, normalizedSearch, normalizedSearch, normalizedSearch, normalizedSearch);
+    countParams.push(normalizedSearch, normalizedSearch, normalizedSearch, normalizedSearch, normalizedSearch, normalizedSearch);
+  }
+
   const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
-  const cursor = typeof query.cursor === "string" && query.cursor.includes(":") ? query.cursor : null;
+  const cursor = sort.isDefault && typeof query.cursor === "string" && query.cursor.includes(":") ? query.cursor : null;
   let cursorClause = "";
   const cursorParams: Array<number> = [];
   if (cursor) {
@@ -272,7 +312,7 @@ export async function listRequestLog(workspaceId: string, query: RequestLogQuery
     FROM requests
     ${where}
     ${cursorClause}
-    ORDER BY timestamp DESC, id DESC
+      ORDER BY ${sort.orderBy}, id ${sort.dir}
     LIMIT ?
     ${cursor ? "" : "OFFSET ?"};
   `;
@@ -293,6 +333,70 @@ export async function listRequestLog(workspaceId: string, query: RequestLogQuery
     hasMore: cursor ? normalizedRows.length === limit : page * limit < Number(total?.count ?? 0),
     nextCursor
   };
+}
+
+function getRequestSort(sortBy: RequestLogQuery["sortBy"] = "timestamp", sortDir: RequestLogQuery["sortDir"] = "desc") {
+  const dir = sortDir === "asc" ? "ASC" : "DESC";
+  const sortKey = sortBy && ["timestamp", "cost", "latency", "tokens", "provider", "model", "endpoint", "status"].includes(sortBy)
+    ? sortBy
+    : "timestamp";
+  const column = {
+    timestamp: "timestamp",
+    cost: "cost_usd",
+    latency: "latency_ms",
+    tokens: "total_tokens",
+    provider: "LOWER(provider)",
+    model: "LOWER(model)",
+    endpoint: "LOWER(route)",
+    status: "CASE WHEN error IS NULL THEN '200' WHEN error LIKE '%429%' THEN '429' WHEN error LIKE '%500%' THEN '500' ELSE 'ERR' END"
+  }[sortKey];
+
+  return { orderBy: `${column} ${dir}`, dir, isDefault: sortKey === "timestamp" && dir === "DESC" };
+}
+
+function appendRangeFilter(
+  filters: string[],
+  params: Array<string | number>,
+  countParams: Array<string | number>,
+  column: string,
+  min?: number,
+  max?: number
+) {
+  if (Number.isFinite(min)) {
+    filters.push(`${column} >= ?`);
+    params.push(min as number);
+    countParams.push(min as number);
+  }
+  if (Number.isFinite(max)) {
+    filters.push(`${column} <= ?`);
+    params.push(max as number);
+    countParams.push(max as number);
+  }
+}
+
+function appendStatusFilters(filters: string[], params: Array<string | number>, countParams: Array<string | number>, statuses: string[]) {
+  if (statuses.length === 0) return;
+
+  const statusConditions: string[] = [];
+  for (const status of statuses) {
+    if (status === "success" || status === "200") {
+      statusConditions.push("error IS NULL");
+    } else if (status === "error" || status === "ERR") {
+      statusConditions.push("error IS NOT NULL");
+    } else if (status === "429") {
+      statusConditions.push("error LIKE ?");
+      params.push("%429%");
+      countParams.push("%429%");
+    } else if (status === "500") {
+      statusConditions.push("error LIKE ?");
+      params.push("%500%");
+      countParams.push("%500%");
+    }
+  }
+
+  if (statusConditions.length > 0) {
+    filters.push(`(${statusConditions.join(" OR ")})`);
+  }
 }
 
 export async function getAnalyticsSnapshot(workspaceId: string, hours = 24): Promise<AnalyticsSnapshot> {
@@ -495,6 +599,18 @@ export async function getTelemetryCount(workspaceId?: string): Promise<number> {
   return Number(row?.count ?? 0);
 }
 
+export async function getCurrentMonthSpend(workspaceId: string): Promise<number> {
+  const db = getDatabase();
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const row = await db.prepare(`
+    SELECT COALESCE(SUM(cost_usd), 0) AS spend
+    FROM requests
+    WHERE workspace_id = ? AND timestamp >= ?;
+  `).get<{ spend: string | number }>(workspaceId, monthStart);
+  return Number(row?.spend ?? 0);
+}
+
 export async function listForExport(workspaceId: string, query: ExportTelemetryQuery): Promise<TelemetryRow[]> {
   const db = getDatabase();
   
@@ -532,11 +648,10 @@ export async function listForExport(workspaceId: string, query: ExportTelemetryQ
   // Filter by status (error conditions)
   if (query.statuses && query.statuses.length > 0) {
     const statusConditions: string[] = [];
-    let statusParamIndex = 0;
     for (const status of query.statuses) {
-      if (status === "200") {
+      if (status === "success" || status === "200") {
         statusConditions.push("error IS NULL");
-      } else if (status === "ERR") {
+      } else if (status === "error" || status === "ERR") {
         statusConditions.push("error IS NOT NULL");
       } else if (status === "429") {
         statusConditions.push("error LIKE ?");
@@ -545,15 +660,59 @@ export async function listForExport(workspaceId: string, query: ExportTelemetryQ
         statusConditions.push("error LIKE ?");
         params.push("%500%");
       }
-      statusParamIndex++;
     }
     if (statusConditions.length > 0) {
       conditions.push(`(${statusConditions.join(" OR ")})`);
     }
   }
+
+  if (query.workspaces && query.workspaces.length > 0) {
+    const placeholders = query.workspaces.map(() => "?").join(",");
+    conditions.push(`workspace_id IN (${placeholders})`);
+    params.push(...query.workspaces);
+  }
+
+  if (Number.isFinite(query.minLatency)) {
+    conditions.push("latency_ms >= ?");
+    params.push(query.minLatency as number);
+  }
+  if (Number.isFinite(query.maxLatency)) {
+    conditions.push("latency_ms <= ?");
+    params.push(query.maxLatency as number);
+  }
+  if (Number.isFinite(query.minCost)) {
+    conditions.push("cost_usd >= ?");
+    params.push(query.minCost as number);
+  }
+  if (Number.isFinite(query.maxCost)) {
+    conditions.push("cost_usd <= ?");
+    params.push(query.maxCost as number);
+  }
+  if (Number.isFinite(query.minTokens)) {
+    conditions.push("total_tokens >= ?");
+    params.push(query.minTokens as number);
+  }
+  if (Number.isFinite(query.maxTokens)) {
+    conditions.push("total_tokens <= ?");
+    params.push(query.maxTokens as number);
+  }
+
+  if (query.search?.trim()) {
+    const normalizedSearch = `%${query.search.trim().toLowerCase()}%`;
+    conditions.push(`(
+      LOWER(route) LIKE ?
+      OR LOWER(model) LIKE ?
+      OR LOWER(provider) LIKE ?
+      OR CAST(id AS TEXT) LIKE ?
+      OR LOWER(COALESCE(error, '')) LIKE ?
+      OR LOWER(COALESCE(metadata::text, '')) LIKE ?
+    )`);
+    params.push(normalizedSearch, normalizedSearch, normalizedSearch, normalizedSearch, normalizedSearch, normalizedSearch);
+  }
   
   const where = conditions.join(" AND ");
   const limit = Math.min(query.limit ?? 10000, 100000); // Max 100k records
+  const sort = getRequestSort(query.sortBy, query.sortDir);
   const sql = `
     SELECT
       id,
@@ -571,7 +730,7 @@ export async function listForExport(workspaceId: string, query: ExportTelemetryQ
       metadata
     FROM requests
     WHERE ${where}
-    ORDER BY timestamp DESC, id DESC
+    ORDER BY ${sort.orderBy}, id ${sort.dir}
     LIMIT ?
   `;
   

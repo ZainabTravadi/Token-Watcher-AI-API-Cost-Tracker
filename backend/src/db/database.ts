@@ -68,6 +68,26 @@ async function applySchema(db: PgDatabase): Promise<void> {
 async function ensureSchemaUpdates(db: PgDatabase): Promise<void> {
   await db.exec("ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS last_logout_at BIGINT NOT NULL DEFAULT 0");
   await db.exec("ALTER TABLE IF EXISTS requests ADD COLUMN IF NOT EXISTS metadata JSONB");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS alert_on_latency BOOLEAN NOT NULL DEFAULT false");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS daily_digest BOOLEAN NOT NULL DEFAULT false");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS weekly_report BOOLEAN NOT NULL DEFAULT true");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS latency_threshold_ms INTEGER NOT NULL DEFAULT 2000");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS notification_email TEXT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS last_digest_sent BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS last_weekly_report_sent BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS last_test_email_sent BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS last_high_cost_alert_sent BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS last_error_alert_sent BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS last_latency_alert_sent BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS daily_digest_time TEXT NOT NULL DEFAULT '09:00'");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS digest_timezone TEXT NOT NULL DEFAULT 'UTC'");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS weekly_report_day TEXT NOT NULL DEFAULT 'Monday'");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS weekly_report_time TEXT NOT NULL DEFAULT '08:00'");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS webhook_last_test_at BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS webhook_last_status TEXT");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS webhook_last_response_code INTEGER");
+  await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS webhook_last_response_time_ms INTEGER");
   await db.exec("ALTER TABLE IF EXISTS users ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN updated_at TYPE BIGINT, ALTER COLUMN last_logout_at TYPE BIGINT");
   await db.exec("ALTER TABLE IF EXISTS workspaces ALTER COLUMN monthly_budget TYPE DOUBLE PRECISION, ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN updated_at TYPE BIGINT");
   await db.exec("ALTER TABLE IF EXISTS api_keys ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN revoked_at TYPE BIGINT");
