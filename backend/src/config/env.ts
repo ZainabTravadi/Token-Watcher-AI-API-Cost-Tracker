@@ -16,6 +16,8 @@ export interface AppConfig {
   resendApiKey: string | null;
   resendFromEmail: string;
   appUrl: string;
+  requireSignedIngest: boolean;
+  ingestSignatureToleranceMs: number;
 }
 
 const DEV_JWT_SECRET = "dev-secret-key-please-set-in-production";
@@ -27,6 +29,14 @@ function parseBoolean(value?: string): boolean {
     return false;
   }
   return TRUTHY_BOOLEAN_STRINGS.has(value.trim().toLowerCase());
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function normalizeOrigin(origin: string): string {
@@ -73,6 +83,8 @@ export function getConfig(): AppConfig {
     enableSimulators,
     resendApiKey: process.env.RESEND_API_KEY ?? null,
     resendFromEmail: process.env.RESEND_FROM_EMAIL ?? "TokenWatcher <notifications@tokenwatch.local>",
-    appUrl: process.env.APP_URL ?? "http://localhost:8080"
+    appUrl: process.env.APP_URL ?? "http://localhost:8080",
+    requireSignedIngest: parseBoolean(process.env.TOKENWATCH_REQUIRE_SIGNED_INGEST),
+    ingestSignatureToleranceMs: parsePositiveInteger(process.env.TOKENWATCH_INGEST_SIGNATURE_TOLERANCE_MS, 300000)
   };
 }

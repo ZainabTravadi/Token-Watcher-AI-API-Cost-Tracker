@@ -87,6 +87,13 @@ export interface TokenWatchStateSnapshot {
   identity: TokenWatchIdentity | null;
 }
 
+export interface TokenWatchSignedHeaders {
+  "X-TokenWatch-Workspace": string;
+  "X-TokenWatch-Timestamp": string;
+  "X-TokenWatch-Nonce": string;
+  "X-TokenWatch-Signature": string;
+}
+
 export interface TokenWatchSimulationController {
   stop: () => void;
   running: boolean;

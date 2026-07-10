@@ -43,6 +43,10 @@ test("init and setEndpoint update the client state", async () => {
     const body = JSON.parse(requests[0].init.body);
     assert.equal(body.event, "request.sent");
     assert.equal(body.workspace_id, "demo-app");
+    assert.equal(requests[0].init.headers["X-TokenWatch-Workspace"], "demo-app");
+    assert.ok(requests[0].init.headers["X-TokenWatch-Timestamp"]);
+    assert.ok(requests[0].init.headers["X-TokenWatch-Nonce"]);
+    assert.ok(requests[0].init.headers["X-TokenWatch-Signature"]);
     }
   );
 });

@@ -2,6 +2,7 @@ import { type Request, type Response, type NextFunction } from "express";
 import { getConfig } from "../config/env";
 import { verifyJwt } from "../utils/auth";
 import { getUserLastLogoutAt, getUserWorkspaces, getWorkspace, verifyApiKey } from "../services/authService";
+import { verifySignedSdkRequest } from "../utils/sdkAuth";
 
 export interface AuthenticatedRequest extends Request {
   userId?: string;
@@ -9,6 +10,7 @@ export interface AuthenticatedRequest extends Request {
   authMethod?: "cookie" | "bearer";
   sessionIssuedAt?: number;
   sessionExpiresAt?: number;
+  rawBody?: string;
 }
 
 /**
@@ -58,6 +60,7 @@ export async function authenticateUser(req: AuthenticatedRequest, res: Response,
  */
 export async function authenticateSDK(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
+    const config = getConfig();
     const apiKey = req.headers["x-api-key"];
 
     if (!apiKey || typeof apiKey !== "string") {
@@ -68,6 +71,15 @@ export async function authenticateSDK(req: AuthenticatedRequest, res: Response, 
     const result = await verifyApiKey(apiKey);
     if (!result) {
       res.status(401).json({ error: "Invalid API key" });
+      return;
+    }
+
+    const signatureResult = verifySignedSdkRequest(req, apiKey, result.workspaceId, {
+      required: config.requireSignedIngest,
+      toleranceMs: config.ingestSignatureToleranceMs
+    });
+    if (!signatureResult.ok) {
+      res.status(401).json({ error: signatureResult.error });
       return;
     }
 

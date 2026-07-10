@@ -3,6 +3,7 @@ import { classifyError, createRetryPolicy } from "./internal/retryPolicy.js";
 import { createBoundedQueue } from "./internal/queue.js";
 import { onShutdown } from "./internal/shutdown.js";
 import { maybeUnref } from "./internal/utils.js";
+import { createSignedHeaders } from "./security.js";
 
 type RequestPayload = Record<string, unknown>;
 
@@ -367,14 +368,16 @@ async function sendRequest(state: TokenWatchStateSnapshot, endpoint: string, pay
   inFlightControllers.add(controller);
 
   try {
+    const body = JSON.stringify(payload);
+    const signedHeaders = await createSignedHeaders(state, "POST", extractPath(targetUrl), body);
     const response = await fetch(targetUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-TokenWatch-Workspace": state.workspaceId,
+        ...signedHeaders,
         ...state.headers
       },
-      body: JSON.stringify(payload),
+      body,
       signal: controller.signal
     });
 
@@ -387,6 +390,10 @@ async function sendRequest(state: TokenWatchStateSnapshot, endpoint: string, pay
     shutdownSignal?.removeEventListener("abort", abortFromShutdown);
     inFlightControllers.delete(controller);
   }
+}
+
+function extractPath(url: string): string {
+  return new URL(url).pathname;
 }
 
 function resolveUrl(apiUrl: string, endpoint: string): string {

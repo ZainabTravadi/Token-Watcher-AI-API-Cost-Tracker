@@ -100,6 +100,7 @@ test("enqueue during an active flush is delivered by a follow-up flush", async (
 
       const first = TokenWatch.track("first");
       await waitUntil(() => getTransportStats().isFlushing);
+      await waitUntil(() => typeof releaseFirst === "function");
 
       const second = TokenWatch.track("second");
       assert.equal(getQueueSize(), 1);

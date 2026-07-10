@@ -16,7 +16,11 @@ export function createApp(): Express {
 
   // Middleware
   app.use(cookieParser());
-  app.use(express.json());
+  app.use(express.json({
+    verify: (request, _response, buffer) => {
+      (request as { rawBody?: string }).rawBody = buffer.toString("utf8");
+    }
+  }));
 
   // CORS
   app.use((request, response, next) => {
@@ -47,7 +51,7 @@ export function createApp(): Express {
 
       response.header(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, X-Requested-With, X-API-Key"
+        "Content-Type, Authorization, X-Requested-With, X-API-Key, X-TokenWatch-Workspace, X-TokenWatch-Timestamp, X-TokenWatch-Nonce, X-TokenWatch-Signature"
       );
 
       response.header(

@@ -44,6 +44,7 @@
     "build:esm": "tsc -p tsconfig.esm.json",
     "build:cjs": "tsc -p tsconfig.cjs.json && node -e \"const fs=require('fs'); fs.writeFileSync('dist/cjs/package.json', JSON.stringify({ type: 'commonjs' }, null, 2) + '\\n');\"",
     "build": "npm run clean && npm run build:esm && npm run build:cjs && npm run postbuild",
+    "lint": "tsc -p tsconfig.esm.json --noEmit && tsc -p tsconfig.cjs.json --noEmit",
     "postbuild": "node ./scripts/fix-dts-extensions.cjs",
     "test": "npm run build:esm && node --test test/sdk.test.js test/phase2-validation.test.js"
   }
