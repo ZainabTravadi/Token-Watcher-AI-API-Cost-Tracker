@@ -87,8 +87,8 @@ export function getConfig(): OpenClawConfig {
   }
 
   return {
-    host: process.env.OPENCLAW_HOST?.trim() || "127.0.0.1",
-    port: parsePort(process.env.OPENCLAW_PORT, 3300),
+    host: process.env.OPENCLAW_HOST?.trim() || "0.0.0.0",
+    port: parsePort(process.env.PORT ?? process.env.OPENCLAW_PORT, 3300),
     logLevel: parseLogLevel(process.env.OPENCLAW_LOG_LEVEL),
     telegramBotToken: required("OPENCLAW_TELEGRAM_BOT_TOKEN"),
     telegramSecretToken: optional("OPENCLAW_TELEGRAM_SECRET_TOKEN"),
