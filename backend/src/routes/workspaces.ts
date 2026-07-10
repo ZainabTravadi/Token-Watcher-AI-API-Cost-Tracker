@@ -1,14 +1,19 @@
 import { Router, type Response } from "express";
 import { getConfig } from "../config/env";
-import { authenticateUser, type AuthenticatedRequest } from "../middleware/auth";
+import { authenticateUser, authenticateWorkspaceAccess, type AuthenticatedRequest } from "../middleware/auth";
 import {
   createWorkspace,
   deleteWorkspace,
+  generateWorkspaceApiKey,
   getWorkspace,
   getWorkspaceApiKey,
   getWorkspaceSettings,
   getUserWorkspaces,
+  listWorkspaceApiKeys,
+  normalizeApiKeyPermissions,
+  normalizeApiKeyType,
   regenerateWorkspaceApiKey,
+  revokeWorkspaceApiKey,
   updateWorkspace,
   updateWorkspaceSettings,
 } from "../services/authService";
@@ -178,6 +183,28 @@ export function createWorkspacesRouter(): Router {
     } catch (error) {
       console.error("[workspaces:list:error]", error);
       res.status(500).json({ error: "Failed to list workspaces" });
+    }
+  });
+
+  router.get("/current", authenticateWorkspaceAccess("workspace:read"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.workspaceId) {
+        res.status(400).json({ error: "Workspace ID required" });
+        return;
+      }
+      const workspace = (req as any).workspace ?? await getWorkspace(req.workspaceId);
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+      res.status(200).json({
+        ...workspace,
+        apiKey: req.authMethod === "api_key" ? null : await getWorkspaceApiKey(workspace.id),
+        settings: await getWorkspaceSettings(workspace.id),
+      });
+    } catch (error) {
+      console.error("[workspaces:current:error]", error);
+      res.status(500).json({ error: "Failed to get workspace" });
     }
   });
 
@@ -617,6 +644,100 @@ export function createWorkspacesRouter(): Router {
     } catch (error) {
       console.error("[workspaces:regenerate-key:error]", error);
       res.status(500).json({ error: "Failed to regenerate API key" });
+    }
+  });
+
+  router.get("/:id/api-keys", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const workspaceId = getWorkspaceId(req);
+      if (!workspaceId) {
+        res.status(400).json({ error: "Workspace ID required" });
+        return;
+      }
+
+      const workspace = await getWorkspace(workspaceId, req.userId!);
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      res.status(200).json({ apiKeys: await listWorkspaceApiKeys(workspaceId) });
+    } catch (error) {
+      console.error("[workspaces:list-keys:error]", error);
+      res.status(500).json({ error: "Failed to list API keys" });
+    }
+  });
+
+  router.post("/:id/api-keys", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const workspaceId = getWorkspaceId(req);
+      if (!workspaceId) {
+        res.status(400).json({ error: "Workspace ID required" });
+        return;
+      }
+
+      const workspace = await getWorkspace(workspaceId, req.userId!);
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const type = normalizeApiKeyType(req.body?.type);
+      const permissions = normalizeApiKeyPermissions(type, req.body?.permissions);
+      if (Array.isArray(req.body?.permissions) && permissions.length === 0) {
+        res.status(400).json({ error: "No valid permissions are allowed for this API key type" });
+        return;
+      }
+      const label = typeof req.body?.label === "string" ? req.body.label.trim() : `${type} key`;
+      const expiresAt = req.body?.expires_at === null || req.body?.expires_at === undefined || req.body?.expires_at === ""
+        ? null
+        : Number(req.body.expires_at);
+      if (expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
+        res.status(400).json({ error: "Expiration must be a future timestamp" });
+        return;
+      }
+
+      const apiKey = await generateWorkspaceApiKey({
+        workspaceId,
+        createdBy: req.userId!,
+        label,
+        type,
+        permissions,
+        expiresAt
+      });
+      const keys = await listWorkspaceApiKeys(workspaceId);
+      const meta = keys[0] ?? null;
+      res.status(201).json({ apiKey, apiKeyMeta: meta });
+    } catch (error) {
+      console.error("[workspaces:create-key:error]", error);
+      res.status(500).json({ error: "Failed to create API key" });
+    }
+  });
+
+  router.post("/:id/api-keys/:keyId/revoke", authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const workspaceId = getWorkspaceId(req);
+      const keyId = typeof req.params.keyId === "string" ? req.params.keyId : "";
+      if (!workspaceId || !keyId) {
+        res.status(400).json({ error: "Workspace ID and key ID required" });
+        return;
+      }
+
+      const workspace = await getWorkspace(workspaceId, req.userId!);
+      if (!workspace) {
+        res.status(404).json({ error: "Workspace not found" });
+        return;
+      }
+
+      const ok = await revokeWorkspaceApiKey(workspaceId, keyId);
+      if (!ok) {
+        res.status(404).json({ error: "API key not found or already revoked" });
+        return;
+      }
+      res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error("[workspaces:revoke-key:error]", error);
+      res.status(500).json({ error: "Failed to revoke API key" });
     }
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "@zn_/tokenwatch",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": false,
   "description": "Lightweight SDK for sending application telemetry to TokenWatch.",
   "type": "module",

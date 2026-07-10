@@ -75,6 +75,27 @@ function spawnNpm(args, options) {
   return spawn("npm", args, options);
 }
 
+async function stopChild(child, signal = "SIGTERM", timeoutMs = 5000) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
+  const exited = once(child, "exit");
+  child.kill(signal);
+
+  await Promise.race([
+    exited,
+    new Promise((resolve) => {
+      setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+        resolve();
+      }, timeoutMs);
+    })
+  ]);
+}
+
 const telegramMessages = [];
 const telegramServer = http.createServer(async (request, response) => {
   const url = new URL(request.url, "http://127.0.0.1:3302");
@@ -122,16 +143,56 @@ try {
   }, 45000);
 
   const email = `${randomId("openclaw")}@example.com`;
-  const password = `Pass-${randomId("pw")}`;
+  const password = `Pass-${randomId("pw")}-12345`;
   const signupResponse = await postJson("http://127.0.0.1:3001/api/auth/signup", { email, password });
   if (!signupResponse.ok) {
     throw new Error(`Signup failed: ${signupResponse.status} ${await signupResponse.text()}`);
   }
   const signupBody = await signupResponse.json();
+  const authCookie = signupResponse.headers.get("set-cookie")?.split(";")[0];
   const workspaceId = signupBody.workspace?.id;
   const apiKey = signupBody.workspace?.apiKey?.value;
-  if (!workspaceId || !apiKey) {
+  if (!workspaceId || !apiKey || !authCookie) {
     throw new Error(`Signup did not return workspace/api key: ${JSON.stringify(signupBody)}`);
+  }
+
+  const openclawKeyResponse = await postJson(
+    `http://127.0.0.1:3001/api/workspaces/${workspaceId}/api-keys`,
+    { label: "Live verification OpenClaw", type: "OPENCLAW" },
+    { Cookie: authCookie }
+  );
+  if (!openclawKeyResponse.ok) {
+    throw new Error(`OpenClaw key creation failed: ${openclawKeyResponse.status} ${await openclawKeyResponse.text()}`);
+  }
+  const openclawKeyBody = await openclawKeyResponse.json();
+  const openclawApiKey = openclawKeyBody.apiKey;
+  const openclawKeyId = openclawKeyBody.apiKeyMeta?.id;
+  if (!openclawApiKey) {
+    throw new Error(`OpenClaw key creation did not return secret: ${JSON.stringify(openclawKeyBody)}`);
+  }
+
+  const sdkPermissionResponse = await getJson("http://127.0.0.1:3001/api/analytics/overview", {
+    Authorization: `Bearer ${apiKey}`
+  });
+  if (sdkPermissionResponse.status !== 403) {
+    throw new Error(`SDK key should not access analytics; received ${sdkPermissionResponse.status}: ${await sdkPermissionResponse.text()}`);
+  }
+
+  const expiringKeyResponse = await postJson(
+    `http://127.0.0.1:3001/api/workspaces/${workspaceId}/api-keys`,
+    { label: "Expired verification key", type: "OPENCLAW", expires_at: Date.now() + 2000 },
+    { Cookie: authCookie }
+  );
+  if (!expiringKeyResponse.ok) {
+    throw new Error(`Expiring key creation failed: ${expiringKeyResponse.status} ${await expiringKeyResponse.text()}`);
+  }
+  const expiringKey = (await expiringKeyResponse.json()).apiKey;
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  const expiredResponse = await getJson("http://127.0.0.1:3001/api/analytics/overview", {
+    Authorization: `Bearer ${expiringKey}`
+  });
+  if (expiredResponse.status !== 401) {
+    throw new Error(`Expired OpenClaw key should fail; received ${expiredResponse.status}: ${await expiredResponse.text()}`);
   }
 
   await new Promise((resolve, reject) => {
@@ -145,9 +206,8 @@ try {
     import { TokenWatch } from ${JSON.stringify(sdkEntryUrl)};
     TokenWatch.init({
       apiUrl: "http://127.0.0.1:3001",
-      workspaceId: ${JSON.stringify(workspaceId)},
       apiKey: ${JSON.stringify(apiKey)},
-      endpoint: "/api/ingest"
+      endpoint: "/ingest"
     });
     const base = Date.now();
     const events = [
@@ -188,10 +248,7 @@ try {
       OPENCLAW_TELEGRAM_BOT_TOKEN: "live-phase-bot",
       OPENCLAW_TELEGRAM_API_URL: "http://127.0.0.1:3302",
       TOKENWATCHER_API_URL: "http://127.0.0.1:3001",
-      TOKENWATCHER_AUTH_MODE: "login",
-      TOKENWATCHER_EMAIL: email,
-      TOKENWATCHER_PASSWORD: password,
-      TOKENWATCHER_WORKSPACE_ID: workspaceId,
+      TOKENWATCHER_API_KEY: openclawApiKey,
       TOKENWATCHER_TIMEOUT_MS: "60000",
       OPENCLAW_LOG_LEVEL: "error"
     },
@@ -241,6 +298,24 @@ try {
       }
     }
 
+    if (!openclawKeyId) {
+      throw new Error(`OpenClaw key metadata did not include an id: ${JSON.stringify(openclawKeyBody)}`);
+    }
+    const revokeResponse = await postJson(
+      `http://127.0.0.1:3001/api/workspaces/${workspaceId}/api-keys/${openclawKeyId}/revoke`,
+      {},
+      { Cookie: authCookie }
+    );
+    if (!revokeResponse.ok) {
+      throw new Error(`OpenClaw key revoke failed: ${revokeResponse.status} ${await revokeResponse.text()}`);
+    }
+    const revokedResponse = await getJson("http://127.0.0.1:3001/api/analytics/overview", {
+      Authorization: `Bearer ${openclawApiKey}`
+    });
+    if (revokedResponse.status !== 401) {
+      throw new Error(`Revoked OpenClaw key should fail; received ${revokedResponse.status}: ${await revokedResponse.text()}`);
+    }
+
     const backendStdout = backend.getStdout();
     if (!backendStdout.includes("[AI INSIGHTS] Provider: Gemini")) {
       throw new Error(`Live verification did not observe Gemini usage.\nBackend stdout:\n${backendStdout}`);
@@ -248,15 +323,13 @@ try {
 
     process.stdout.write("Live production integration verification passed.\n");
   } finally {
-    openclaw.child.kill("SIGTERM");
-    await once(openclaw.child, "exit");
+    await stopChild(openclaw.child);
     if (openclaw.getStderr().trim()) {
       process.stderr.write(openclaw.getStderr());
     }
   }
 } finally {
-  backend.child.kill("SIGTERM");
-  await once(backend.child, "exit");
+  await stopChild(backend.child);
   await new Promise((resolve) => telegramServer.close(resolve));
   if (backend.getStderr().trim()) {
     process.stderr.write(backend.getStderr());

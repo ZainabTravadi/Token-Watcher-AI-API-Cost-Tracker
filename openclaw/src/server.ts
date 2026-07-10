@@ -1,4 +1,5 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import type { OpenClawConfig } from "./config/env";
 import { formatUserFacingError } from "./errors";
 import type { Logger } from "./logger";
@@ -8,14 +9,31 @@ import type { TelegramUpdate } from "./telegram/types";
 import { TelegramTransport } from "./telegram/transport";
 import { TokenWatcherToolRegistry } from "./tokenwatcher/tools";
 
+const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024;
+
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let size = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > MAX_WEBHOOK_BODY_BYTES) {
+      throw new Error("Webhook payload too large");
+    }
+    chunks.push(buffer);
   }
 
   const body = Buffer.concat(chunks).toString("utf8");
   return body ? JSON.parse(body) : {};
+}
+
+function secretsMatch(expected: string, received: string | string[] | undefined): boolean {
+  if (typeof received !== "string") {
+    return false;
+  }
+  const left = Buffer.from(expected);
+  const right = Buffer.from(received);
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 function writeJson(response: ServerResponse, statusCode: number, payload: unknown): void {
@@ -51,13 +69,21 @@ export function createOpenClawServer(
       if (request.method === "POST" && url.pathname === "/telegram/webhook") {
         const expectedSecret = config.telegramSecretToken;
         const receivedSecret = request.headers["x-telegram-bot-api-secret-token"];
-        if (expectedSecret && receivedSecret !== expectedSecret) {
+        if (expectedSecret && !secretsMatch(expectedSecret, receivedSecret)) {
           logger.warn("telegram.webhook.rejected", { reason: "invalid_secret" });
           writeJson(response, 403, { error: "Forbidden" });
           return;
         }
 
-        const update = await readJsonBody(request) as TelegramUpdate;
+        let update: TelegramUpdate;
+        try {
+          update = await readJsonBody(request) as TelegramUpdate;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Invalid JSON";
+          logger.warn("telegram.webhook.rejected", { reason: message });
+          writeJson(response, message.includes("too large") ? 413 : 400, { error: message.includes("too large") ? "Payload too large" : "Invalid JSON" });
+          return;
+        }
         const message = update.message?.text?.trim();
         const chatId = update.message?.chat?.id;
 

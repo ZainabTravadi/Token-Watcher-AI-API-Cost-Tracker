@@ -9,7 +9,6 @@ export interface AppConfig {
   port: number;
   nodeEnv: string;
   databaseUrl: string;
-  databasePath: string;
   jwtSecret: string;
   corsOrigin: string[];
   enableSimulators: boolean;
@@ -72,12 +71,22 @@ export function getConfig(): AppConfig {
       "JWT_SECRET must be set to a strong secret in production. Set process.env.JWT_SECRET to a secure, random string with at least 32 characters."
     );
   }
+
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required. TokenWatcher supports PostgreSQL only.");
+  }
+  if (!/^postgres(?:ql)?:\/\//iu.test(databaseUrl)) {
+    throw new Error("DATABASE_URL must be a PostgreSQL connection string.");
+  }
+  if (nodeEnv === "production" && !process.env.CORS_ORIGIN) {
+    throw new Error("CORS_ORIGIN is required in production and must list the allowed frontend origin(s).");
+  }
   
   return {
     port: Number.parseInt(process.env.PORT ?? "3001", 10),
     nodeEnv,
-    databaseUrl: process.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/tokenwatch",
-    databasePath: process.env.DATABASE_PATH ?? "./data/tokenwatch.sqlite",
+    databaseUrl,
     jwtSecret,
     corsOrigin,
     enableSimulators,

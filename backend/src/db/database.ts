@@ -16,6 +16,8 @@ import {
   createApiKeysTableSql,
   createApiKeysWorkspaceIdIndexSql,
   createApiKeysHashActiveIndexSql,
+  createApiKeysExpiresAtIndexSql,
+  createApiKeysRevokedAtIndexSql,
   createWorkspaceSettingsTableSql
 } from "./schema";
 
@@ -51,6 +53,8 @@ async function applySchema(db: PgDatabase): Promise<void> {
   await db.exec(createApiKeysTableSql);
   await db.exec(createApiKeysWorkspaceIdIndexSql);
   await db.exec(createApiKeysHashActiveIndexSql);
+  await db.exec(createApiKeysExpiresAtIndexSql);
+  await db.exec(createApiKeysRevokedAtIndexSql);
   await db.exec(createWorkspaceSettingsTableSql);
 
   await ensureSchemaUpdates(db);
@@ -67,6 +71,12 @@ async function applySchema(db: PgDatabase): Promise<void> {
 
 async function ensureSchemaUpdates(db: PgDatabase): Promise<void> {
   await db.exec("ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS last_logout_at BIGINT NOT NULL DEFAULT 0");
+  await db.exec("ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS label TEXT NOT NULL DEFAULT 'Default SDK key'");
+  await db.exec("ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'SDK'");
+  await db.exec("ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '[\"telemetry:ingest\"]'::jsonb");
+  await db.exec("ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS created_by TEXT");
+  await db.exec("ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS last_used_at BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS expires_at BIGINT");
   await db.exec("ALTER TABLE IF EXISTS requests ADD COLUMN IF NOT EXISTS metadata JSONB");
   await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS alert_on_latency BOOLEAN NOT NULL DEFAULT false");
   await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS daily_digest BOOLEAN NOT NULL DEFAULT false");
@@ -90,7 +100,7 @@ async function ensureSchemaUpdates(db: PgDatabase): Promise<void> {
   await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS webhook_last_response_time_ms INTEGER");
   await db.exec("ALTER TABLE IF EXISTS users ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN updated_at TYPE BIGINT, ALTER COLUMN last_logout_at TYPE BIGINT");
   await db.exec("ALTER TABLE IF EXISTS workspaces ALTER COLUMN monthly_budget TYPE DOUBLE PRECISION, ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN updated_at TYPE BIGINT");
-  await db.exec("ALTER TABLE IF EXISTS api_keys ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN revoked_at TYPE BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS api_keys ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN last_used_at TYPE BIGINT, ALTER COLUMN expires_at TYPE BIGINT, ALTER COLUMN revoked_at TYPE BIGINT");
   await db.exec("ALTER TABLE IF EXISTS workspace_settings ALTER COLUMN alert_cost_threshold TYPE DOUBLE PRECISION, ALTER COLUMN created_at TYPE BIGINT, ALTER COLUMN updated_at TYPE BIGINT");
   await db.exec("ALTER TABLE IF EXISTS requests ALTER COLUMN timestamp TYPE BIGINT, ALTER COLUMN cost_usd TYPE DOUBLE PRECISION");
 }
@@ -177,10 +187,6 @@ export async function closeDatabase(): Promise<void> {
 
   await database.pool.end();
   database = null;
-}
-
-export function getDatabasePath(): string {
-  return getConfig().databasePath;
 }
 
 function translateSql(sql: string, params: unknown[]): { text: string; values: unknown[] } {

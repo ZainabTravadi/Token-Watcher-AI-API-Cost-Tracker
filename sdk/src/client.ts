@@ -1,4 +1,4 @@
-import { DEFAULT_ENDPOINT } from "./defaults.js";
+import { DEFAULT_API_URL, DEFAULT_ENDPOINT } from "./defaults.js";
 import { createIdentifyRecord, createSimulationRecord, createTrackRecord, defaultSimulationIntervalMs } from "./generator.js";
 import { getState, readSimulationState, setConfig, setIdentity, setSimulationFlags, setSimulationTimer, snapshot, isInitialized, markInitialized, resetRuntimeState } from "./state.js";
 import { configureTransport, flush as flushTransport, getTransportStats, postJson, __resetTransportForTests } from "./transport.js";
@@ -15,13 +15,6 @@ export function init(options: TokenWatchInitOptions): ReturnType<typeof snapshot
   if (!options.apiKey) {
     throw new Error("TokenWatch.init(): apiKey is required");
   }
-  if (!options.workspaceId) {
-    throw new Error("TokenWatch.init(): workspaceId is required");
-  }
-  if (!options.apiUrl) {
-    throw new Error("TokenWatch.init(): apiUrl is required");
-  }
-
   if (isInitialized()) {
     console.warn("TokenWatch.init() was called multiple times. Previous configuration will be replaced.");
     // Perform a safe, surgical runtime reset to avoid leaking timers, queued
@@ -42,9 +35,9 @@ export function init(options: TokenWatchInitOptions): ReturnType<typeof snapshot
   }
 
   const result = setConfig({
-    apiUrl: options.apiUrl,
+    apiUrl: options.apiUrl || DEFAULT_API_URL,
     apiKey: options.apiKey,
-    workspaceId: options.workspaceId,
+    workspaceId: options.workspaceId ?? "",
     endpoint: options.endpoint || DEFAULT_ENDPOINT,
     headers: {
       ...(options.headers ?? {}),
@@ -57,6 +50,7 @@ export function init(options: TokenWatchInitOptions): ReturnType<typeof snapshot
     batchSize: options.batchSize,
     flushInterval: options.flushInterval,
     retryAttempts: options.retryAttempts,
+    requestTimeoutMs: options.requestTimeoutMs,
     debug: options.debug
   });
 

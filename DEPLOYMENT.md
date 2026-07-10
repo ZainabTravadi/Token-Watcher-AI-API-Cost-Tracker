@@ -95,6 +95,9 @@ Only variables documented in the repository are listed here. Do not invent varia
 | `TELEMETRY_RETENTION_DAYS` | No | Controls retention dry-run and deletion behavior for `retention.js` |
 | `TELEMETRY_RETENTION_APPLY` | No | When `true` the retention script will apply deletions (use with care) |
 | `ENABLE_SIMULATORS` | No | Enable simulators in non-production/testing environments |
+| `TOKENWATCHER_API_URL` | Yes (OpenClaw) | TokenWatcher backend URL for OpenClaw |
+| `TOKENWATCHER_API_KEY` | Yes (OpenClaw) | Workspace-scoped API key of type `OPENCLAW` |
+| `OPENCLAW_TELEGRAM_BOT_TOKEN` | Yes (OpenClaw) | Telegram bot token |
 
 > Note: Copy `.env.example` → `.env` and populate these variables as required.
 
@@ -131,6 +134,21 @@ Health endpoint: `GET /api/health` — reports database connection status and op
 - Build the frontend for production.
 - Set `VITE_TOKENWATCH_API_URL` to your deployed backend URL.
 - Deploy the frontend separately from the backend if needed.
+
+### OpenClaw deployment
+
+- Create an `OPENCLAW` key from Dashboard > Settings > API keys.
+- Configure OpenClaw with only `TOKENWATCHER_API_URL`, `TOKENWATCHER_API_KEY`, and `OPENCLAW_TELEGRAM_BOT_TOKEN`.
+- Do not deploy OpenClaw with dashboard user credentials or dashboard JWTs.
+
+For existing workspaces, generate OpenClaw keys:
+
+```bash
+cd backend
+npm run keys:create-openclaw
+```
+
+The command prints each new secret once. Store it in your deployment secret manager.
 
 ---
 

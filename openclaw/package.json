@@ -10,6 +10,7 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "@types/node": "^20.10.0"
   }
 }

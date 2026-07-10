@@ -38,11 +38,12 @@ export function generateId(prefix: string): string {
 }
 
 /**
- * Generate an API key with a specific format: tw_live_xxxxx
+ * Generate a high-entropy API key with a caller-supplied type prefix.
  */
-export function generateApiKey(): string {
-  const random = randomBytes(24).toString("hex");
-  return `tw_live_${random}`;
+export function generateApiKey(prefix = "tw_sdk_"): string {
+  const normalizedPrefix = /^tw_[a-z]+_$/u.test(prefix) ? prefix : "tw_sdk_";
+  const random = randomBytes(32).toString("hex");
+  return `${normalizedPrefix}${random}`;
 }
 
 /**

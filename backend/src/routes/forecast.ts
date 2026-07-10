@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticateUser, requireOwnedWorkspace, type AuthenticatedRequest } from "../middleware/auth";
+import { authenticateWorkspaceAccess, type AuthenticatedRequest } from "../middleware/auth";
 import { generateBudgetForecast, generateForecast, generateRequestForecast, generateSpendForecast } from "../services/forecastService";
 
 export function createForecastRouter(): Router {
@@ -7,8 +7,7 @@ export function createForecastRouter(): Router {
 
   router.get(
     "/forecast",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("forecast:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         response.json({ data: await generateForecast(request.workspaceId!) });
@@ -21,8 +20,7 @@ export function createForecastRouter(): Router {
 
   router.get(
     "/forecast/spend",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("forecast:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         response.json({ data: await generateSpendForecast(request.workspaceId!) });
@@ -35,8 +33,7 @@ export function createForecastRouter(): Router {
 
   router.get(
     "/forecast/requests",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("forecast:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         response.json({ data: await generateRequestForecast(request.workspaceId!) });
@@ -49,8 +46,7 @@ export function createForecastRouter(): Router {
 
   router.get(
     "/forecast/budget",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("forecast:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         response.json({ data: await generateBudgetForecast(request.workspaceId!) });

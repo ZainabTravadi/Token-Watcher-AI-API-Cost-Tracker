@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { buildAnalyticsSnapshot, buildRealtimeAnalyticsSnapshot } from "../services/analyticsService";
-import { authenticateUser, requireOwnedWorkspace, type AuthenticatedRequest } from "../middleware/auth";
+import { authenticateWorkspaceAccess, type AuthenticatedRequest } from "../middleware/auth";
 
 export function createAnalyticsRouter(): Router {
   const router = Router();
@@ -8,8 +8,7 @@ export function createAnalyticsRouter(): Router {
   // Protected routes that require authentication and workspace context
   router.get(
       "/analytics/overview",
-      authenticateUser,
-      requireOwnedWorkspace,
+      authenticateWorkspaceAccess("analytics:read"),
     async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -21,8 +20,7 @@ export function createAnalyticsRouter(): Router {
 
   router.get(
       "/analytics/endpoints",
-      authenticateUser,
-      requireOwnedWorkspace,
+      authenticateWorkspaceAccess("analytics:read"),
     async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -34,8 +32,7 @@ export function createAnalyticsRouter(): Router {
 
   router.get(
       "/analytics/models",
-      authenticateUser,
-      requireOwnedWorkspace,
+      authenticateWorkspaceAccess("analytics:read"),
     async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -47,8 +44,7 @@ export function createAnalyticsRouter(): Router {
 
   router.get(
       "/analytics/recent",
-      authenticateUser,
-      requireOwnedWorkspace,
+      authenticateWorkspaceAccess("analytics:read"),
     async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -60,8 +56,7 @@ export function createAnalyticsRouter(): Router {
 
   router.get(
       "/analytics/timeline",
-      authenticateUser,
-      requireOwnedWorkspace,
+      authenticateWorkspaceAccess("analytics:read"),
     async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });
@@ -73,8 +68,7 @@ export function createAnalyticsRouter(): Router {
 
   router.get(
       "/analytics/snapshot",
-      authenticateUser,
-      requireOwnedWorkspace,
+      authenticateWorkspaceAccess("analytics:read"),
     async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });

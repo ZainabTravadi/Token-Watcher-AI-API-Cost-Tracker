@@ -1,32 +1,36 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { getConfig } from "../config/env";
 import { verifyJwt } from "../utils/auth";
-import { getUserLastLogoutAt, getUserWorkspaces, getWorkspace, verifyApiKey } from "../services/authService";
+import {
+  getUserLastLogoutAt,
+  getUserWorkspaces,
+  getWorkspace,
+  hasApiKeyPermission,
+  readApiKeyTypeFromKey,
+  verifyApiKey,
+  type ApiKeyIdentity,
+  type ApiKeyPermission
+} from "../services/authService";
 import { verifySignedSdkRequest } from "../utils/sdkAuth";
 
 export interface AuthenticatedRequest extends Request {
   userId?: string;
   workspaceId?: string;
-  authMethod?: "cookie" | "bearer";
+  authMethod?: "cookie" | "api_key";
+  apiKey?: ApiKeyIdentity;
   sessionIssuedAt?: number;
   sessionExpiresAt?: number;
   rawBody?: string;
 }
 
 /**
- * Middleware to authenticate user via JWT cookie or Authorization header only
+ * Middleware to authenticate a human dashboard user via JWT cookie.
  */
 export async function authenticateUser(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const config = getConfig();
     
-    // Check for JWT in cookie or Authorization header only
-    let token = req.cookies?.["tokenwatch_auth"];
-    let authMethod: "cookie" | "bearer" = "cookie";
-    if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-      token = req.headers.authorization.slice(7);
-      authMethod = "bearer";
-    }
+    const token = req.cookies?.["tokenwatch_auth"];
 
     if (!token) {
       res.status(401).json({ error: "Unauthorized" });
@@ -46,7 +50,7 @@ export async function authenticateUser(req: AuthenticatedRequest, res: Response,
     }
 
     req.userId = decoded.userId;
-    req.authMethod = authMethod;
+    req.authMethod = "cookie";
     req.sessionIssuedAt = decoded.iat * 1000;
     req.sessionExpiresAt = decoded.exp * 1000;
     next();
@@ -61,9 +65,9 @@ export async function authenticateUser(req: AuthenticatedRequest, res: Response,
 export async function authenticateSDK(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const config = getConfig();
-    const apiKey = req.headers["x-api-key"];
+    const apiKey = readApiKey(req);
 
-    if (!apiKey || typeof apiKey !== "string") {
+    if (!apiKey) {
       res.status(401).json({ error: "Missing API key" });
       return;
     }
@@ -71,6 +75,10 @@ export async function authenticateSDK(req: AuthenticatedRequest, res: Response, 
     const result = await verifyApiKey(apiKey);
     if (!result) {
       res.status(401).json({ error: "Invalid API key" });
+      return;
+    }
+    if (!hasApiKeyPermission(result, "telemetry:ingest")) {
+      res.status(403).json({ error: "API key is not allowed to ingest telemetry" });
       return;
     }
 
@@ -84,9 +92,82 @@ export async function authenticateSDK(req: AuthenticatedRequest, res: Response, 
     }
 
     req.workspaceId = result.workspaceId;
+    req.userId = result.ownerId;
+    req.apiKey = result;
+    req.authMethod = "api_key";
     (req as any).workspace = result.workspace;
     next();
   } catch (error) {
+    res.status(500).json({ error: "API key validation error" });
+  }
+}
+
+export function requireApiKeyPermission(permission: ApiKeyPermission) {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const apiKey = readApiKey(req);
+      if (!apiKey) {
+        res.status(401).json({ error: "Missing API key" });
+        return;
+      }
+
+      const identity = await verifyApiKey(apiKey);
+      if (!identity) {
+        res.status(401).json({ error: "Invalid API key" });
+        return;
+      }
+
+      if (!hasApiKeyPermission(identity, permission)) {
+        res.status(403).json({ error: "API key does not have the required permission" });
+        return;
+      }
+
+      req.userId = identity.ownerId;
+      req.workspaceId = identity.workspaceId;
+      req.apiKey = identity;
+      req.authMethod = "api_key";
+      (req as any).workspace = identity.workspace;
+      next();
+    } catch {
+      res.status(500).json({ error: "API key validation error" });
+    }
+  };
+}
+
+export function authenticateWorkspaceAccess(permission: ApiKeyPermission) {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    if (readApiKey(req)) {
+      await requireApiKeyPermission(permission)(req, res, next);
+      return;
+    }
+
+    await authenticateUser(req, res, async () => {
+      await requireOwnedWorkspace(req, res, next);
+    });
+  };
+}
+
+export async function authenticateIdentity(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  const apiKey = readApiKey(req);
+  if (!apiKey) {
+    await authenticateUser(req, res, next);
+    return;
+  }
+
+  try {
+    const identity = await verifyApiKey(apiKey);
+    if (!identity) {
+      res.status(401).json({ error: "Invalid API key" });
+      return;
+    }
+
+    req.userId = identity.ownerId;
+    req.workspaceId = identity.workspaceId;
+    req.apiKey = identity;
+    req.authMethod = "api_key";
+    (req as any).workspace = identity.workspace;
+    next();
+  } catch {
     res.status(500).json({ error: "API key validation error" });
   }
 }
@@ -104,6 +185,11 @@ export function attachWorkspaceOptional(req: AuthenticatedRequest, res: Response
 }
 
 export async function requireOwnedWorkspace(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  if (req.authMethod === "api_key" && req.workspaceId) {
+    next();
+    return;
+  }
+
   if (!req.userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -131,4 +217,19 @@ export async function requireOwnedWorkspace(req: AuthenticatedRequest, res: Resp
   req.workspaceId = workspace.id;
   (req as any).workspace = workspace;
   next();
+}
+
+function readApiKey(req: AuthenticatedRequest): string | null {
+  const xApiKey = req.headers["x-api-key"];
+  if (typeof xApiKey === "string" && xApiKey.trim()) {
+    return xApiKey.trim();
+  }
+
+  const authorization = req.headers.authorization;
+  if (typeof authorization === "string" && authorization.startsWith("Bearer ")) {
+    const token = authorization.slice(7).trim();
+    return readApiKeyTypeFromKey(token) ? token : null;
+  }
+
+  return null;
 }

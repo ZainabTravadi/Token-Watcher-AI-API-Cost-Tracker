@@ -30,6 +30,27 @@ async function waitFor(check, timeoutMs = 5000) {
   throw new Error("Timed out waiting for expected condition");
 }
 
+async function stopChild(child, signal = "SIGTERM", timeoutMs = 5000) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
+  const exited = once(child, "exit");
+  child.kill(signal);
+
+  await Promise.race([
+    exited,
+    new Promise((resolve) => {
+      setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+        resolve();
+      }, timeoutMs);
+    })
+  ]);
+}
+
 const backendCalls = [];
 const telegramMessages = [];
 
@@ -46,14 +67,10 @@ const tokenWatcherMock = http.createServer(async (request, response) => {
   const record = { path: `${url.pathname}${url.search}`, method: request.method, authorization: authHeader, body };
   backendCalls.push(record);
 
-  if (request.method === "POST" && url.pathname === "/api/auth/login") {
-    response.statusCode = 200;
+  if (authHeader !== "Bearer tw_oc_openclaw_mock_key") {
+    response.statusCode = 401;
     response.setHeader("Content-Type", "application/json");
-    response.setHeader("Set-Cookie", "tokenwatch_auth=phase3b-mock-jwt; Path=/; HttpOnly");
-    response.end(JSON.stringify({
-      user: { id: "user_openclaw" },
-      workspaces: [{ id: "ws_phase3b" }]
-    }));
+    response.end(JSON.stringify({ error: "Invalid API key" }));
     return;
   }
 
@@ -61,6 +78,23 @@ const tokenWatcherMock = http.createServer(async (request, response) => {
   response.setHeader("Content-Type", "application/json");
 
   switch (url.pathname) {
+    case "/api/me":
+      response.end(JSON.stringify({
+        identity: {
+          type: "api_key",
+          key: {
+            id: "key_openclaw_mock",
+            type: "OPENCLAW",
+            label: "Mock OpenClaw key",
+            permissions: ["workspace:read", "analytics:read", "requests:read", "reports:read", "recommendations:read", "forecast:read", "copilot:use"],
+            expires_at: null
+          },
+          workspace: { id: "ws_mock", name: "Mock Workspace" },
+          organization: { id: "ws_mock", name: "Mock Workspace" },
+          owner: { id: "user_mock", email: "mock@example.com" }
+        }
+      }));
+      return;
     case "/api/analytics/overview":
       response.end(JSON.stringify({
         data: {
@@ -246,10 +280,7 @@ const child = spawn("node", ["dist/main.js"], {
     OPENCLAW_TELEGRAM_BOT_TOKEN: "phase3b-bot",
     OPENCLAW_TELEGRAM_API_URL: "http://127.0.0.1:3302",
     TOKENWATCHER_API_URL: "http://127.0.0.1:3301",
-    TOKENWATCHER_AUTH_MODE: "login",
-    TOKENWATCHER_EMAIL: "service@example.com",
-    TOKENWATCHER_PASSWORD: "secret-password",
-    TOKENWATCHER_WORKSPACE_ID: "ws_phase3b",
+    TOKENWATCHER_API_KEY: "tw_oc_openclaw_mock_key",
     OPENCLAW_LOG_LEVEL: "error"
   },
   stdio: ["ignore", "pipe", "pipe"]
@@ -336,8 +367,8 @@ for (const [index, scenario] of scenarios.entries()) {
     throw new Error(`Expected backend call ${scenario.expectedCallPrefix} for "${scenario.text}" but saw ${JSON.stringify(newCalls)}`);
   }
 
-  if (expectedCall.authorization && expectedCall.authorization !== "Bearer phase3b-mock-jwt") {
-    throw new Error(`Expected reused bearer token, received: ${expectedCall.authorization}`);
+  if (expectedCall.authorization !== "Bearer tw_oc_openclaw_mock_key") {
+    throw new Error(`Expected OpenClaw API key bearer token, received: ${expectedCall.authorization}`);
   }
 
   const telegramMessage = telegramMessages.at(-1);
@@ -346,8 +377,7 @@ for (const [index, scenario] of scenarios.entries()) {
   }
 }
 
-child.kill("SIGTERM");
-await once(child, "exit");
+await stopChild(child);
 await Promise.all([
   new Promise((resolve) => tokenWatcherMock.close(resolve)),
   new Promise((resolve) => telegramMock.close(resolve))
@@ -358,3 +388,4 @@ if (stderr.trim()) {
 }
 
 process.stdout.write("Phase 3B verification passed.\n");
+

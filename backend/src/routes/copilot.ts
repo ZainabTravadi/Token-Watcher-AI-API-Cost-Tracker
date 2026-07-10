@@ -1,5 +1,5 @@
 import { Router, type Response } from "express";
-import { authenticateUser, requireOwnedWorkspace, type AuthenticatedRequest } from "../middleware/auth";
+import { authenticateWorkspaceAccess, type AuthenticatedRequest } from "../middleware/auth";
 import {
   runCopilotChat,
   runCopilotExplain,
@@ -13,7 +13,7 @@ import type { IntelligenceAnomaly } from "../services/anomalyService";
 export function createCopilotRouter(): Router {
   const router = Router();
 
-  router.post("/copilot/chat", authenticateUser, requireOwnedWorkspace, async (request: AuthenticatedRequest, response) => {
+  router.post("/copilot/chat", authenticateWorkspaceAccess("copilot:use"), async (request: AuthenticatedRequest, response) => {
     try {
       response.json({ data: await runCopilotChat(request.workspaceId!, validateCopilotRequest(request.body)) });
     } catch (error) {
@@ -21,7 +21,7 @@ export function createCopilotRouter(): Router {
     }
   });
 
-  router.post("/copilot/stream", authenticateUser, requireOwnedWorkspace, async (request: AuthenticatedRequest, response) => {
+  router.post("/copilot/stream", authenticateWorkspaceAccess("copilot:use"), async (request: AuthenticatedRequest, response) => {
     try {
       const result = await runCopilotChat(request.workspaceId!, validateCopilotRequest(request.body));
       response.setHeader("Content-Type", "text/event-stream");
@@ -44,7 +44,7 @@ export function createCopilotRouter(): Router {
     }
   });
 
-  router.post("/copilot/report", authenticateUser, requireOwnedWorkspace, async (request: AuthenticatedRequest, response) => {
+  router.post("/copilot/report", authenticateWorkspaceAccess("copilot:use"), async (request: AuthenticatedRequest, response) => {
     try {
       const type = parseReportType(request.body?.type);
       response.json({ data: await runCopilotReport(request.workspaceId!, type, request.body) });
@@ -53,7 +53,7 @@ export function createCopilotRouter(): Router {
     }
   });
 
-  router.post("/copilot/explain", authenticateUser, requireOwnedWorkspace, async (request: AuthenticatedRequest, response) => {
+  router.post("/copilot/explain", authenticateWorkspaceAccess("copilot:use"), async (request: AuthenticatedRequest, response) => {
     try {
       const anomaly = isAnomaly(request.body?.anomaly) ? request.body.anomaly : undefined;
       response.json({ data: await runCopilotExplain(request.workspaceId!, anomaly, request.body) });
@@ -62,7 +62,7 @@ export function createCopilotRouter(): Router {
     }
   });
 
-  router.post("/copilot/forecast", authenticateUser, requireOwnedWorkspace, async (request: AuthenticatedRequest, response) => {
+  router.post("/copilot/forecast", authenticateWorkspaceAccess("copilot:use"), async (request: AuthenticatedRequest, response) => {
     try {
       response.json({ data: await runCopilotForecast(request.workspaceId!, request.body) });
     } catch (error) {

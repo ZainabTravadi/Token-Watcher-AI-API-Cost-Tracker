@@ -29,7 +29,7 @@ Lightweight AI telemetry, analytics, and cost monitoring for production systems.
 - Node.js / npm
 - Express (backend)
 - React + Vite (frontend)
-- PostgreSQL (Neon-compatible), SQLite (local development)
+- PostgreSQL (Neon-compatible)
 - Server-Sent Events (SSE) for realtime streaming
 - Vitest for tests
 - Heroku and Vercel deployment workflows
@@ -130,9 +130,6 @@ npm install @zn_/tokenwatch
 ```
 
 ## Need credentials?
-
-- Workspace ID
-	- Dashboard → Sidebar → Copy Workspace ID
 - API Key
 	- Dashboard → Settings → API Keys
 - apiUrl
@@ -154,8 +151,7 @@ import { TokenWatch } from "@zn_/tokenwatch";
 
 TokenWatch.init({
 	apiUrl: "http://localhost:3001",
-	workspaceId: "ws_xxxxxxxx",
-	apiKey: "tw_live_xxxxxxxx"
+	apiKey: process.env.TOKENWATCH_API_KEY
 });
 ```
 
@@ -210,7 +206,7 @@ before shutdown.
 - No data appearing?
 	1. Is backend running?
 	2. Is `apiUrl` correct?
-	3. Is `workspaceId` correct?
+	3. Is the API key active and unexpired?
 	4. Is API key valid?
 	5. Did you call `flush()`?
 	6. Are filters cleared?
@@ -221,6 +217,25 @@ before shutdown.
 ## Deployment
 
 See [Deployment Guide](./DEPLOYMENT.md) for local development commands, hosted deployment checklists, backups, and retention guidance.
+
+### OpenClaw Deployment
+
+OpenClaw uses a workspace-scoped `OPENCLAW` API key. It never logs in with a human account and never receives a workspace ID.
+
+Required environment:
+
+```bash
+TOKENWATCHER_API_URL=https://your-tokenwatcher-backend.example
+TOKENWATCHER_API_KEY=tw_oc_xxxxx
+OPENCLAW_TELEGRAM_BOT_TOKEN=xxxxx
+```
+
+Create the key from Dashboard > Settings > API keys, or migrate existing workspaces with:
+
+```bash
+cd backend
+npm run keys:create-openclaw
+```
 
 ### Frontend Deployment
 
@@ -297,4 +312,5 @@ Big thanks to everyone helping make **TokenWatch** better 🚀
 </div>
 
 Every contribution - whether code, documentation, testing, or feedback—is greatly appreciated ❤️
+
 

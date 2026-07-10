@@ -140,8 +140,7 @@ import { TokenWatch } from "@zn_/tokenwatch";
 
 TokenWatch.init({
   apiUrl: "http://localhost:3001",
-  workspaceId: "ws_xxxxxxxx",
-  apiKey: "tw_live_xxxxxxxx"
+  apiKey: "tw_sdk_xxxxxxxx"
 });
 
 await TokenWatch.track("llm.request.completed", {

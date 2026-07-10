@@ -73,8 +73,7 @@ export class TokenWatcherToolRegistry {
   }
 
   private async getWorkspace(): Promise<ToolExecutionResult> {
-    const workspaceId = await this.client.getWorkspaceId();
-    const route = workspaceId ? `/api/workspaces/${workspaceId}` : "/api/workspaces";
+    const route = "/api/workspaces/current";
     const response = await this.client.getJson<{ data?: unknown } | unknown>(route);
     return {
       tool: "workspace.get",

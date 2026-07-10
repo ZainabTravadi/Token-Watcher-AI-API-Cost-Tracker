@@ -2,7 +2,7 @@ import { Router } from "express";
 import { ingestTelemetry, validateTelemetryPayload } from "../services/ingestService";
 import { listRequestLogRecords } from "../services/requestService";
 import { generateTelemetryPdf } from "../services/telemetryPdfService";
-import { authenticateUser, authenticateSDK, requireOwnedWorkspace, type AuthenticatedRequest } from "../middleware/auth";
+import { authenticateSDK, authenticateWorkspaceAccess, type AuthenticatedRequest } from "../middleware/auth";
 import { listForExport, type ExportTelemetryQuery } from "../services/telemetryRepository";
 
 function readStringArray(value: unknown): string[] {
@@ -46,8 +46,7 @@ export function createRequestsRouter(): Router {
 
   router.get(
     "/requests",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("requests:read"),
     async (request: AuthenticatedRequest, response) => {
       const page = Number.parseInt(String(request.query.page ?? "1"), 10);
       const limit = Number.parseInt(String(request.query.limit ?? "50"), 10);
@@ -101,8 +100,7 @@ export function createRequestsRouter(): Router {
 
   router.get(
     "/requests/export",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("requests:read"),
     async (request: AuthenticatedRequest, response) => {
       if (!request.workspaceId) {
         response.status(400).json({ error: "Workspace ID required" });

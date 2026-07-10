@@ -20,7 +20,10 @@ import { SettingsWorkspaceNameSection } from "./settings/SettingsWorkspaceNameSe
 import { DangerousActionDialog } from "./settings/DangerousActionDialog";
 import {
   deleteWorkspaceById,
+  createWorkspaceApiKey,
+  fetchWorkspaceApiKeys,
   fetchWorkspaceUsage,
+  revokeWorkspaceApiKey,
   rotateWorkspaceApiKey,
   sendDailyDigest,
   sendTestEmail,
@@ -28,6 +31,7 @@ import {
   testWorkspaceWebhook,
   updateWorkspaceMeta,
   updateWorkspaceSettings,
+  type ApiKeyType,
 } from "./settings/api";
 import {
   validateAlertThreshold,
@@ -62,7 +66,6 @@ export default function Settings() {
   const previousWorkspaceId = useRef<string | null>(null);
 
   const [plainApiKey, setPlainApiKey] = useState<string | null>(null);
-  const [showApiKey, setShowApiKey] = useState(false);
   const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -97,12 +100,25 @@ export default function Settings() {
   const [testingEmail, setTestingEmail] = useState(false);
   const [testingWebhook, setTestingWebhook] = useState(false);
   const [rotatingKey, setRotatingKey] = useState(false);
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [revokingKey, setRevokingKey] = useState<string | null>(null);
+  const [keyLabel, setKeyLabel] = useState("Production OpenClaw");
+  const [keyType, setKeyType] = useState<ApiKeyType>("OPENCLAW");
+  const [keyExpiresAt, setKeyExpiresAt] = useState("");
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const usageQuery = useQuery({
     queryKey: ["workspace-usage", currentWorkspace?.id],
     queryFn: () => fetchWorkspaceUsage(currentWorkspace!.id),
+    enabled: !!currentWorkspace?.id,
+    staleTime: 5_000,
+    retry: 1,
+  });
+
+  const apiKeysQuery = useQuery({
+    queryKey: ["workspace-api-keys", currentWorkspace?.id],
+    queryFn: () => fetchWorkspaceApiKeys(currentWorkspace!.id),
     enabled: !!currentWorkspace?.id,
     staleTime: 5_000,
     retry: 1,
@@ -141,7 +157,6 @@ export default function Settings() {
 
     if (workspaceChanged) {
       setPlainApiKey(currentWorkspace.apiKey?.value ?? null);
-      setShowApiKey(false);
       setDeleteConfirmation("");
       setRotateDialogOpen(false);
       setDeleteDialogOpen(false);
@@ -155,6 +170,7 @@ export default function Settings() {
     await queryClient.invalidateQueries({ queryKey: ["request-log"] });
     await queryClient.invalidateQueries({ queryKey: ["health"] });
     await queryClient.invalidateQueries({ queryKey: ["workspace-usage"] });
+    await queryClient.invalidateQueries({ queryKey: ["workspace-api-keys"] });
   };
 
   const alertDraft = useMemo(
@@ -239,9 +255,9 @@ export default function Settings() {
       setError(null);
       const data = await rotateWorkspaceApiKey(currentWorkspace.id, currentWorkspace.name);
       setPlainApiKey(data.apiKey);
-      setShowApiKey(false);
       setRotateDialogOpen(false);
       await refreshUser();
+      await queryClient.invalidateQueries({ queryKey: ["workspace-api-keys", currentWorkspace.id] });
       toast({ title: "API key rotated", description: "Existing integrations must use the new key." });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to rotate API key";
@@ -249,6 +265,50 @@ export default function Settings() {
       toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setRotatingKey(false);
+    }
+  };
+
+  const handleCreateApiKey = async () => {
+    if (!currentWorkspace) return;
+
+    const expiresAt = keyExpiresAt.trim()
+      ? new Date(`${keyExpiresAt.trim()}T23:59:59.999`).getTime()
+      : null;
+    if (expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
+      toast({ title: "Invalid expiration", description: "Use a future date in YYYY-MM-DD format.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setCreatingKey(true);
+      const created = await createWorkspaceApiKey(currentWorkspace.id, {
+        label: keyLabel.trim() || `${keyType} key`,
+        type: keyType,
+        expires_at: expiresAt,
+      });
+      setPlainApiKey(created.apiKey);
+      await queryClient.invalidateQueries({ queryKey: ["workspace-api-keys", currentWorkspace.id] });
+      toast({ title: "API key created", description: "Copy the secret now. It will not be shown again." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create API key";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
+  const handleRevokeApiKey = async (keyId: string) => {
+    if (!currentWorkspace) return;
+    try {
+      setRevokingKey(keyId);
+      await revokeWorkspaceApiKey(currentWorkspace.id, keyId);
+      await queryClient.invalidateQueries({ queryKey: ["workspace-api-keys", currentWorkspace.id] });
+      toast({ title: "API key revoked", description: "Requests using this key will now fail." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to revoke API key";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setRevokingKey(null);
     }
   };
 
@@ -652,12 +712,22 @@ export default function Settings() {
 
         <SettingsApiKeySection
           workspace={currentWorkspace}
+          keys={apiKeysQuery.data ?? []}
           plainApiKey={plainApiKey}
-          showApiKey={showApiKey}
+          isLoading={apiKeysQuery.isLoading}
+          isCreating={creatingKey}
           isRotating={rotatingKey}
-          onToggleReveal={() => setShowApiKey((visible) => !visible)}
+          isRevoking={revokingKey}
+          draftLabel={keyLabel}
+          draftType={keyType}
+          draftExpiresAt={keyExpiresAt}
+          onDraftLabelChange={setKeyLabel}
+          onDraftTypeChange={setKeyType}
+          onDraftExpiresAtChange={setKeyExpiresAt}
+          onCreate={() => void handleCreateApiKey()}
           onCopy={() => void handleCopyApiKey()}
           onRequestRotate={() => setRotateDialogOpen(true)}
+          onRevoke={(keyId) => void handleRevokeApiKey(keyId)}
         />
 
         <SettingsWorkspaceNameSection

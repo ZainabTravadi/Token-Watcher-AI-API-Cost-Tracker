@@ -30,8 +30,8 @@ export default function Signup() {
       return;
     }
 
-    if (password.length < 6) {
-      setLocalError("Password must be at least 6 characters.");
+    if (password.length < 12 || !/[A-Za-z]/u.test(password) || !/[0-9]/u.test(password)) {
+      setLocalError("Password must be at least 12 characters and include a letter and a number.");
       return;
     }
 

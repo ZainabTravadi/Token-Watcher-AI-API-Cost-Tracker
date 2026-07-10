@@ -81,3 +81,36 @@ test("simulate sends a realistic telemetry payload", async () => {
     }
   );
 });
+
+test("init can resolve workspace from API key identity", async () => {
+  const requests = [];
+
+  await withFetch(
+    async (url, init) => {
+      requests.push({ url, init });
+      if (url === "http://localhost:4000/api/me") {
+        return new Response(JSON.stringify({ identity: { workspace: { id: "ws_from_key" } } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+      return new Response(null, { status: 204 });
+    },
+    async () => {
+      TokenWatch.init({
+        apiUrl: "http://localhost:4000",
+        apiKey: "tw_sdk_test_key"
+      });
+
+      await TokenWatch.track("request.sent", { route: "/api/chat" });
+      await TokenWatch.flush();
+
+      assert.equal(requests.length, 2);
+      assert.equal(requests[0].url, "http://localhost:4000/api/me");
+      assert.equal(requests[0].init.headers.Authorization, "Bearer tw_sdk_test_key");
+      assert.equal(requests[1].url, "http://localhost:4000/ingest");
+      assert.equal(requests[1].init.headers["X-TokenWatch-Workspace"], "ws_from_key");
+      assert.equal(JSON.parse(requests[1].init.body).workspace_id, "ws_from_key");
+    }
+  );
+});

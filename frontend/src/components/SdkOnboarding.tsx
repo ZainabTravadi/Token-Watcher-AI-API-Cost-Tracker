@@ -4,30 +4,26 @@ import { Button } from "@/components/ui/button";
 import type { WorkspaceInfo } from "@/contexts/AuthContext";
 import { API_BASE_URL } from "@/lib/api";
 
-type Framework = "node" | "next" | "express" | "python";
+type Framework = "node" | "next" | "express";
 
 const FRAMEWORKS: Array<{ id: Framework; label: string }> = [
   { id: "node", label: "Node.js" },
   { id: "next", label: "Next.js" },
   { id: "express", label: "Express" },
-  { id: "python", label: "Python" },
 ];
 
 function maskApiKey(value?: string): string {
-  if (!value) return "tw_live_your_api_key";
+  if (!value) return "tw_sdk_your_api_key";
   return value.length > 18 ? `${value.slice(0, 14)}...${value.slice(-4)}` : value;
 }
 
 function snippetFor(framework: Framework, workspace: WorkspaceInfo): string {
-  const apiKey = workspace.apiKey?.value ?? "process.env.TOKENWATCH_API_KEY";
-
   if (framework === "next") {
     return `// app/api/chat/route.ts
   import { TokenWatch } from "@zn_/tokenwatch";
 
   TokenWatch.init({
   apiUrl: "${API_BASE_URL}",
-  workspaceId: "${workspace.id}",
   apiKey: process.env.TOKENWATCH_API_KEY!
 });
 
@@ -60,8 +56,7 @@ export async function POST(request: Request) {
 
   TokenWatch.init({
   apiUrl: "${API_BASE_URL}",
-  workspaceId: "${workspace.id}",
-  apiKey: process.env.TOKENWATCH_API_KEY ?? "${apiKey}"
+  apiKey: process.env.TOKENWATCH_API_KEY!
 });
 
 const app = express();
@@ -85,33 +80,11 @@ app.post("/api/chat", async (req, res) => {
 });`;
   }
 
-  if (framework === "python") {
-    return `# Python SDK is not published yet.
-# For now, post telemetry directly to the ingest API.
-
-import requests
-
-requests.post(
-  "${API_BASE_URL}/api/ingest",
-  headers={"X-API-Key": "tw_live_your_api_key"},
-  json={
-    "route": "/api/chat",
-    "provider": "Your provider",
-    "model": "your-model",
-    "input_tokens": 120,
-    "output_tokens": 80,
-    "cost_usd": 0.0042,
-    "latency_ms": 640,
-  },
-)`;
-  }
-
   return `import { TokenWatch } from "@zn_/tokenwatch";
 
 TokenWatch.init({
   apiUrl: "${API_BASE_URL}",
-  workspaceId: "${workspace.id}",
-  apiKey: process.env.TOKENWATCH_API_KEY ?? "${apiKey}"
+  apiKey: process.env.TOKENWATCH_API_KEY!
 });
 
 await TokenWatch.track("llm.request.completed", {
@@ -132,12 +105,12 @@ await TokenWatch.flush();`;
 
 const quickStartSteps = [
   "Install the package: npm install @zn_/tokenwatch",
-  "Initialize with your Workspace ID from the sidebar and API key from Settings → API Keys",
+  "Set TOKENWATCH_API_KEY to an SDK key from Settings > API Keys",
   "Send one track() event and call flush() before exit",
   "Verify in Overview, Recent Activity, Endpoints, and Models"
 ];
 
-const troubleshootingItems = ["Is backend running?", "Is apiUrl correct?", "Is workspaceId correct?", "Is API key valid?", "Did you call flush()?", "Are filters cleared?"];
+const troubleshootingItems = ["Is backend running?", "Is apiUrl correct?", "Is the API key active?", "Did you call flush()?", "Are filters cleared?"];
 
 export function SdkOnboarding({ workspace, compact = false }: { workspace: WorkspaceInfo; compact?: boolean }) {
   const [framework, setFramework] = useState<Framework>("node");
@@ -158,7 +131,7 @@ export function SdkOnboarding({ workspace, compact = false }: { workspace: Works
           <div className="label-mono mb-2">Connect your app</div>
           <h2 className="font-serif text-2xl leading-tight">Send one telemetry row and the dashboard will populate live.</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            A default workspace is created when you sign up. Copy the Workspace ID from the sidebar, open Settings → API Keys to view or rotate your API key, then install the SDK and initialize it with the hosted or local API URL.
+            A default workspace is created when you sign up. Open Settings &gt; API Keys to view or rotate your SDK key, then install the SDK and initialize it with the hosted or local API URL.
           </p>
         </div>
         <div className="text-xs font-mono text-muted-foreground sm:text-right">
@@ -169,8 +142,7 @@ export function SdkOnboarding({ workspace, compact = false }: { workspace: Works
 
       <div className="rounded border border-hairline bg-background p-4 text-sm leading-6 text-muted-foreground">
         <p className="font-medium text-foreground">Need credentials?</p>
-        <p className="mt-1"><span className="font-medium text-foreground">Workspace ID</span><br />Dashboard → Sidebar → Copy Workspace ID</p>
-        <p className="mt-2"><span className="font-medium text-foreground">API Key</span><br />Dashboard → Settings → API Keys</p>
+        <p className="mt-1"><span className="font-medium text-foreground">API Key</span><br />Dashboard &gt; Settings &gt; API Keys</p>
         <p className="mt-2"><span className="font-medium text-foreground">apiUrl</span><br />Local: <span className="font-mono">http://localhost:3001</span><br />Hosted: your deployed backend URL</p>
       </div>
 

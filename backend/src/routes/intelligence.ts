@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticateUser, requireOwnedWorkspace, type AuthenticatedRequest } from "../middleware/auth";
+import { authenticateWorkspaceAccess, type AuthenticatedRequest } from "../middleware/auth";
 import { detectAnomalies } from "../services/anomalyService";
 import { calculateEfficiencyScore } from "../services/efficiencyScoreService";
 import { generateRecommendations } from "../services/recommendationService";
@@ -10,8 +10,7 @@ export function createIntelligenceRouter(): Router {
 
   router.get(
     "/intelligence/recommendations",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("recommendations:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         response.json({ data: await generateRecommendations(request.workspaceId!) });
@@ -24,8 +23,7 @@ export function createIntelligenceRouter(): Router {
 
   router.get(
     "/intelligence/efficiency-score",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("recommendations:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         response.json({ data: await calculateEfficiencyScore(request.workspaceId!) });
@@ -38,8 +36,7 @@ export function createIntelligenceRouter(): Router {
 
   router.get(
     "/intelligence/anomalies",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("recommendations:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         response.json({ data: await detectAnomalies(request.workspaceId!) });
@@ -52,8 +49,7 @@ export function createIntelligenceRouter(): Router {
 
   router.post(
     "/intelligence/root-cause",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("recommendations:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         const { anomaly } = validateRootCauseRequest(request.body);

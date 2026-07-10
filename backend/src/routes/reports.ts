@@ -1,22 +1,21 @@
 import { Router } from "express";
-import { authenticateUser, requireOwnedWorkspace, type AuthenticatedRequest } from "../middleware/auth";
+import { authenticateWorkspaceAccess, type AuthenticatedRequest } from "../middleware/auth";
 import { exportReport, generateReport, parseExportFormat, parseReportType, type ReportType } from "../services/reportService";
 
 export function createReportsRouter(): Router {
   const router = Router();
 
-  router.get("/reports/executive", authenticateUser, requireOwnedWorkspace, reportHandler("executive"));
-  router.get("/reports/weekly", authenticateUser, requireOwnedWorkspace, reportHandler("weekly"));
-  router.get("/reports/monthly", authenticateUser, requireOwnedWorkspace, reportHandler("monthly"));
-  router.get("/reports/budget", authenticateUser, requireOwnedWorkspace, reportHandler("budget"));
-  router.get("/reports/infrastructure", authenticateUser, requireOwnedWorkspace, reportHandler("infrastructure"));
-  router.get("/reports/optimization", authenticateUser, requireOwnedWorkspace, reportHandler("optimization"));
-  router.get("/reports/governance", authenticateUser, requireOwnedWorkspace, reportHandler("governance"));
+  router.get("/reports/executive", authenticateWorkspaceAccess("reports:read"), reportHandler("executive"));
+  router.get("/reports/weekly", authenticateWorkspaceAccess("reports:read"), reportHandler("weekly"));
+  router.get("/reports/monthly", authenticateWorkspaceAccess("reports:read"), reportHandler("monthly"));
+  router.get("/reports/budget", authenticateWorkspaceAccess("reports:read"), reportHandler("budget"));
+  router.get("/reports/infrastructure", authenticateWorkspaceAccess("reports:read"), reportHandler("infrastructure"));
+  router.get("/reports/optimization", authenticateWorkspaceAccess("reports:read"), reportHandler("optimization"));
+  router.get("/reports/governance", authenticateWorkspaceAccess("reports:read"), reportHandler("governance"));
 
   router.get(
     "/reports/export",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("reports:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         const type = parseReportType(request.query.type);

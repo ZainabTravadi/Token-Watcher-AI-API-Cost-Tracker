@@ -27,7 +27,19 @@ export interface WorkspaceInfo {
   webhook_url: string | null;
   created_at: number;
   updated_at: number;
-  apiKey?: { id: string; created_at: number; revoked_at?: number | null; last_rotated_at?: number | null; value?: string } | null;
+  apiKey?: {
+    id: string;
+    label?: string;
+    type?: string;
+    permissions?: string[];
+    created_at: number;
+    created_by?: string | null;
+    last_used_at?: number | null;
+    expires_at?: number | null;
+    revoked_at?: number | null;
+    last_rotated_at?: number | null;
+    value?: string;
+  } | null;
   settings?: Record<string, unknown> | null;
 }
 

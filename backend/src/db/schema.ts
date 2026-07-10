@@ -27,9 +27,16 @@ CREATE TABLE IF NOT EXISTS api_keys (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
   key_hash TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL DEFAULT 'Default SDK key',
+  type TEXT NOT NULL DEFAULT 'SDK',
+  permissions JSONB NOT NULL DEFAULT '["telemetry:ingest"]'::jsonb,
+  created_by TEXT,
   created_at BIGINT NOT NULL,
+  last_used_at BIGINT,
+  expires_at BIGINT,
   revoked_at BIGINT,
-  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 `;
 
@@ -127,4 +134,12 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_workspace_id ON api_keys (workspace_id);
 
 export const createApiKeysHashActiveIndexSql = `
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash_active ON api_keys (key_hash, revoked_at);
+`;
+
+export const createApiKeysExpiresAtIndexSql = `
+CREATE INDEX IF NOT EXISTS idx_api_keys_expires_at ON api_keys (expires_at);
+`;
+
+export const createApiKeysRevokedAtIndexSql = `
+CREATE INDEX IF NOT EXISTS idx_api_keys_revoked_at ON api_keys (revoked_at);
 `;

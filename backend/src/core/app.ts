@@ -13,14 +13,24 @@ export function createApp(): Express {
   const allowedOrigins = new Set(config.corsOrigin.map(normalizeOrigin));
 
   app.disable("x-powered-by");
+  app.set("trust proxy", 1);
 
   // Middleware
   app.use(cookieParser());
   app.use(express.json({
+    limit: "1mb",
     verify: (request, _response, buffer) => {
       (request as { rawBody?: string }).rawBody = buffer.toString("utf8");
     }
   }));
+
+  app.use((_request, response, next) => {
+    response.header("X-Content-Type-Options", "nosniff");
+    response.header("Referrer-Policy", "no-referrer");
+    response.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    response.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    next();
+  });
 
   // CORS
   app.use((request, response, next) => {

@@ -4,6 +4,7 @@ import { createBoundedQueue } from "./internal/queue.js";
 import { onShutdown } from "./internal/shutdown.js";
 import { maybeUnref } from "./internal/utils.js";
 import { createSignedHeaders } from "./security.js";
+import { setConfig } from "./state.js";
 
 type RequestPayload = Record<string, unknown>;
 
@@ -63,12 +64,14 @@ export function configureTransport(options: {
   batchSize?: number;
   flushInterval?: number;
   retryAttempts?: number;
+  requestTimeoutMs?: number;
   debug?: boolean;
 }): void {
   config.maxQueueSize = normalizePositiveInteger(options.maxQueueSize, config.maxQueueSize, 1);
   config.batchSize = normalizePositiveInteger(options.batchSize, config.batchSize, 1);
   config.flushInterval = normalizePositiveInteger(options.flushInterval, config.flushInterval, 0);
   config.retryAttempts = normalizePositiveInteger(options.retryAttempts, config.retryAttempts, 1);
+  config.requestTimeoutMs = normalizePositiveInteger(options.requestTimeoutMs, config.requestTimeoutMs, 100);
   config.queueWarningThreshold = Math.max(1, Math.floor(config.maxQueueSize * 0.5));
   config.debug = options.debug ?? config.debug;
   queueConfig.maxSize = config.maxQueueSize;
@@ -155,6 +158,7 @@ export function __resetTransportForTests(): void {
     batchSize: 50,
     flushInterval: 25,
     retryAttempts: 3,
+    requestTimeoutMs: 30_000,
     debug: typeof globalThis !== "undefined" && (globalThis as any).__TOKENWATCH_DEBUG === true
   });
 }
@@ -358,7 +362,8 @@ async function retryRequest(state: TokenWatchStateSnapshot, endpoint: string, pa
 }
 
 async function sendRequest(state: TokenWatchStateSnapshot, endpoint: string, payload: RequestPayload, shutdownSignal?: AbortSignal): Promise<void> {
-  const targetUrl = resolveUrl(state.apiUrl, endpoint);
+  const effectiveState = await resolveWorkspaceFromApiKey(state, shutdownSignal);
+  const targetUrl = resolveUrl(effectiveState.apiUrl, endpoint);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.requestTimeoutMs);
   maybeUnref(timeoutId);
@@ -368,14 +373,14 @@ async function sendRequest(state: TokenWatchStateSnapshot, endpoint: string, pay
   inFlightControllers.add(controller);
 
   try {
-    const body = JSON.stringify(payload);
-    const signedHeaders = await createSignedHeaders(state, "POST", extractPath(targetUrl), body);
+    const body = JSON.stringify(withWorkspaceId(payload, effectiveState.workspaceId));
+    const signedHeaders = await createSignedHeaders(effectiveState, "POST", extractPath(targetUrl), body);
     const response = await fetch(targetUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...signedHeaders,
-        ...state.headers
+        ...effectiveState.headers
       },
       body,
       signal: controller.signal
@@ -392,8 +397,51 @@ async function sendRequest(state: TokenWatchStateSnapshot, endpoint: string, pay
   }
 }
 
+function withWorkspaceId(payload: RequestPayload, workspaceId: string): RequestPayload {
+  if (Array.isArray(payload.data)) {
+    return {
+      ...payload,
+      data: payload.data.map((item) => (
+        isPlainObject(item) ? { ...item, workspace_id: workspaceId } : item
+      ))
+    };
+  }
+
+  return { ...payload, workspace_id: workspaceId };
+}
+
+async function resolveWorkspaceFromApiKey(state: TokenWatchStateSnapshot, signal?: AbortSignal): Promise<TokenWatchStateSnapshot> {
+  if (state.workspaceId) {
+    return state;
+  }
+
+  const response = await fetch(resolveUrl(state.apiUrl, "/api/me"), {
+    method: "GET",
+    headers: {
+      "Accept": "application/json",
+      "Authorization": `Bearer ${state.apiKey}`
+    },
+    signal
+  });
+
+  if (!response.ok) {
+    const bodyText = await safeReadBody(response);
+    throw new Error(`TokenWatch identity lookup failed with ${response.status}: ${bodyText}`);
+  }
+
+  const body = await response.json() as { identity?: { workspace?: { id?: unknown } } };
+  const workspaceId = typeof body.identity?.workspace?.id === "string" ? body.identity.workspace.id : "";
+  if (!workspaceId) {
+    throw new Error("TokenWatch identity lookup did not return a workspace.");
+  }
+
+  setConfig({ workspaceId });
+  return { ...state, workspaceId };
+}
+
 function extractPath(url: string): string {
-  return new URL(url).pathname;
+  const parsed = new URL(url);
+  return `${parsed.pathname}${parsed.search}`;
 }
 
 function resolveUrl(apiUrl: string, endpoint: string): string {
@@ -404,6 +452,10 @@ function resolveUrl(apiUrl: string, endpoint: string): string {
   const baseUrl = apiUrl.replace(/\/$/, "");
   const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   return `${baseUrl}${path}`;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function safeReadBody(response: Response): Promise<string> {

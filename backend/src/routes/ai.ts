@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticateUser, requireOwnedWorkspace, type AuthenticatedRequest } from "../middleware/auth";
+import { authenticateWorkspaceAccess, type AuthenticatedRequest } from "../middleware/auth";
 import { generateInsightsForWorkspace } from "../services/aiInsightsService";
 
 export function createAiRouter(): Router {
@@ -7,8 +7,7 @@ export function createAiRouter(): Router {
 
   router.post(
     "/ai/insights",
-    authenticateUser,
-    requireOwnedWorkspace,
+    authenticateWorkspaceAccess("analytics:read"),
     async (request: AuthenticatedRequest, response) => {
       try {
         if (!request.workspaceId) {

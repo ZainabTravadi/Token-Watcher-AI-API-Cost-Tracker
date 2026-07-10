@@ -7,7 +7,7 @@ export function formatUserFacingError(error: unknown): string {
   const normalized = message.toLowerCase();
 
   if (includesAny(normalized, ["401", "unauthorized", "invalid token", "login failed"])) {
-    return "*Authentication Error*\nI couldn't authenticate with TokenWatcher. Please refresh the service account credentials or JWT.";
+    return "*Authentication Error*\nI couldn't authenticate with TokenWatcher. Please rotate the OpenClaw API key and restart the service.";
   }
 
   if (includesAny(normalized, ["403", "forbidden", "workspace id required", "workspace"])) {

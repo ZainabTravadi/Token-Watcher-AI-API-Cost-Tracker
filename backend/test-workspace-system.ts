@@ -309,7 +309,7 @@ async function main() {
     };
 
     const res = await request("POST", "/api/ingest", telemetryData, {
-      "X-API-Key": "tw_live_invalid_key_12345",
+      "X-API-Key": "tw_sdk_invalid_key_12345",
     });
 
     if (res.status === 200) {

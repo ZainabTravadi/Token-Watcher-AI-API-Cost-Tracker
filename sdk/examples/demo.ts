@@ -4,8 +4,7 @@ const apiUrl = process.env.TOKENWATCH_API_URL ?? "http://localhost:3001";
 
 TokenWatch.init({
   apiUrl,
-  workspaceId: process.env.TOKENWATCH_WORKSPACE_ID ?? "demo-app",
-  apiKey: process.env.TOKENWATCH_API_KEY ?? "demo-key-12345",
+  apiKey: process.env.TOKENWATCH_API_KEY ?? "tw_sdk_replace_with_sdk_key",
   endpoint: "/ingest",
   debug: process.env.TOKENWATCH_DEBUG === "true",
   headers: {

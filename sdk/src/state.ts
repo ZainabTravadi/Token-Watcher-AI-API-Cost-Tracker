@@ -34,7 +34,7 @@ export function setConfig(partial: Partial<TokenWatchStateSnapshot>): TokenWatch
     state.apiKey = partial.apiKey;
   }
 
-  if (partial.workspaceId) {
+  if (partial.workspaceId !== undefined) {
     state.workspaceId = partial.workspaceId;
   }
 

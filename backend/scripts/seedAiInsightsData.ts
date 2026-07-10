@@ -72,7 +72,7 @@ async function main() {
 
   console.log('Wrote ' + rows.length + ' rows to ' + outPath);
   console.log('Estimated total spend: $' + totalSpend.toFixed(4) + ' (OpenAI share ~' + openaiPct.toFixed(1) + '%)');
-  console.log('Run the SQL against your database (psql or sqlite3) to insert the rows.');
+  console.log('Run the SQL with psql against your PostgreSQL database to insert the rows.');
 }
 
 main().catch((err) => {

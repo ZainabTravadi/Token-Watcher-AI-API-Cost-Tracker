@@ -1,6 +1,6 @@
-# OpenClaw Phase 3B
+# OpenClaw
 
-Phase 3B keeps the same lightweight OpenClaw service above the existing TokenWatcher backend. It does not duplicate analytics, forecast, reports, recommendations, or Copilot logic. Every tool wrapper calls an existing TokenWatcher REST endpoint.
+OpenClaw is a lightweight Telegram agent above the TokenWatcher backend. It does not duplicate analytics, forecast, reports, recommendations, or Copilot logic. Every tool wrapper calls an existing TokenWatcher REST endpoint using a workspace-scoped OpenClaw API key.
 
 ## Architecture
 
@@ -10,6 +10,7 @@ flowchart TD
     OpenClaw["OpenClaw Agent"]
     Router["Deterministic Intent Router"]
     Tools["Tool Registry"]
+    Key["Bearer TOKENWATCHER_API_KEY"]
     Api["Existing TokenWatcher REST APIs"]
     Services["Existing Backend Services"]
     Reply["Telegram Response"]
@@ -17,7 +18,8 @@ flowchart TD
     Telegram --> OpenClaw
     OpenClaw --> Router
     Router --> Tools
-    Tools --> Api
+    Tools --> Key
+    Key --> Api
     Api --> Services
     Services --> Tools
     Tools --> OpenClaw
@@ -29,7 +31,7 @@ flowchart TD
 - Telegram webhook ingestion
 - Deterministic keyword routing
 - Hybrid routing to existing Copilot for complex questions
-- Existing-auth TokenWatcher client
+- API-key TokenWatcher client
 - Lightweight REST tool wrappers
 - Structured JSON logging
 - Graceful error handling
@@ -39,22 +41,26 @@ flowchart TD
 ## Setup
 
 1. Copy [`.env.example`](/C:/Users/DELL/Desktop/token-watcher/openclaw/.env.example) to `openclaw/.env`.
-2. Fill in Telegram credentials and either service-account login credentials or a JWT.
-3. Build the service:
+2. Create an `OPENCLAW` API key in TokenWatcher Settings > API keys.
+3. Fill in:
+   - `TOKENWATCHER_API_URL`
+   - `TOKENWATCHER_API_KEY`
+   - `OPENCLAW_TELEGRAM_BOT_TOKEN`
+4. Build the service:
 
 ```powershell
 cd openclaw
 npm run build
 ```
 
-4. Start the service:
+5. Start the service:
 
 ```powershell
 cd openclaw
 npm start
 ```
 
-5. Point your Telegram webhook at:
+6. Point your Telegram webhook at:
 
 ```text
 POST /telegram/webhook
@@ -95,4 +101,4 @@ cd openclaw
 npm run verify:live
 ```
 
-This path starts the real local TokenWatcher backend, creates a temporary user and workspace through the existing auth API, ingests real telemetry through the SDK, and then verifies OpenClaw end to end against PostgreSQL and Gemini-backed backend behavior.
+This path starts the real local TokenWatcher backend, creates a temporary user and workspace, creates an OpenClaw API key, ingests real telemetry through the SDK, and then verifies OpenClaw end to end against PostgreSQL and Gemini-backed backend behavior.

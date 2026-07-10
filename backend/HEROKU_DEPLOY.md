@@ -41,7 +41,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # Set all config variables
 heroku config:set \
   NODE_ENV=production \
-  DATABASE_URL="postgresql://user:password@host:port/db?sslmode=require" \
+  DATABASE_URL="postgresql://user:password@host:port/db?sslmode=verify-full" \
   JWT_SECRET="<your-32-char-secret-from-above>" \
   CORS_ORIGIN="https://your-frontend.vercel.app" \
   ENABLE_SIMULATORS=false
@@ -61,7 +61,7 @@ heroku config:set \
 
 For **Neon** (recommended):
 ```
-postgresql://user:password@ep-xxxxx.us-east-1.neon.tech/dbname?sslmode=require
+postgresql://user:password@ep-xxxxx.us-east-1.neon.tech/dbname?sslmode=verify-full
 ```
 
 For **Self-hosted PostgreSQL**:
@@ -217,7 +217,7 @@ web: npm start
 1. Verify DATABASE_URL is correctly set: `heroku config:get DATABASE_URL`
 2. Check database connection string format
 3. Verify database user has correct permissions
-4. For Neon, ensure `?sslmode=require` is in the connection string
+4. For Neon, ensure `?sslmode=verify-full` is in the connection string
 
 ### Environment Variable Not Found
 
@@ -359,7 +359,7 @@ heroku dyno:type standard-1x
 
 1. **Never commit secrets**: Use environment variables only
 2. **Use HTTPS**: Heroku provides free HTTPS automatically
-3. **Database SSL**: Use `?sslmode=require` in PostgreSQL
+3. **Database SSL**: Use `?sslmode=verify-full` for Neon PostgreSQL. Use your provider's recommended SSL mode for Heroku Postgres or self-hosted Postgres.
 4. **JWT Secret**: At least 32 characters, random
 5. **CORS Whitelist**: Only allow your frontend domain
 6. **Regular backups**: Set up automated backups

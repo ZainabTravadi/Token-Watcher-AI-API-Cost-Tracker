@@ -10,7 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "typeRoots": ["./node_modules/@types", "../backend/node_modules/@types"],
+    "typeRoots": ["./node_modules/@types"],
     "resolveJsonModule": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true

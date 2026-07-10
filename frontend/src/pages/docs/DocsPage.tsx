@@ -13,7 +13,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
       {
         heading: "Frontend Deployment",
         body: [
-          "The frontend should point to the backend API URL, which then talks to SQLite.",
+          "The frontend should point to the backend API URL. The backend stores telemetry in PostgreSQL.",
           "Local example: use http://localhost:3001 for the backend.",
           "Production example: use your deployed backend URL.",
           "SSE endpoint requirement: /api/telemetry/stream must remain reachable.",
@@ -26,7 +26,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
           "Install the package, initialize the SDK, send one event, flush before exit, then verify in the dashboard.",
           "Look in Overview, Recent Activity, Endpoints, and Models after the first event lands."
         ],
-        code: "npm install @zn_/tokenwatch\n\nimport { TokenWatch } from \"@zn_/tokenwatch\";\n\nTokenWatch.init({\n  apiUrl: \"http://localhost:3001\",\n  workspaceId: \"ws_xxxxxxxx\",\n  apiKey: \"tw_live_xxxxxxxx\"\n});\n\nawait TokenWatch.track(\n  \"llm.request.completed\",\n  {\n    route: \"/api/chat\",\n    provider: \"openai\",\n    model: \"gpt-4o\",\n    input_tokens: 120,\n    output_tokens: 80,\n    cost_usd: 0.0042,\n    latency_ms: 640\n  }\n);\n\nawait TokenWatch.flush();"
+        code: "npm install @zn_/tokenwatch\n\nimport { TokenWatch } from \"@zn_/tokenwatch\";\n\nTokenWatch.init({\n  apiUrl: \"http://localhost:3001\",\n  apiKey: process.env.TOKENWATCH_API_KEY\n});\n\nawait TokenWatch.track(\n  \"llm.request.completed\",\n  {\n    route: \"/api/chat\",\n    provider: \"openai\",\n    model: \"gpt-4o\",\n    input_tokens: 120,\n    output_tokens: 80,\n    cost_usd: 0.0042,\n    latency_ms: 640\n  }\n);\n\nawait TokenWatch.flush();"
       },
       {
         heading: "Expected Result",
@@ -40,7 +40,6 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
       {
         heading: "Need credentials?",
         body: [
-          "Workspace ID: Dashboard → Sidebar → Copy Workspace ID.",
           "API Key: Dashboard → Settings → API Keys.",
           "apiUrl: Local [http://localhost:3001](http://localhost:3001), hosted = your deployed backend URL."
         ],
@@ -77,7 +76,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
           "No data appearing?",
           "1. Is backend running?",
           "2. Is apiUrl correct?",
-          "3. Is workspaceId correct?",
+          "3. Is the API key active and unexpired?",
           "4. Is API key valid?",
           "5. Did you call flush()?",
           "6. Are filters cleared?"
@@ -91,10 +90,10 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
       {
         heading: "Initialization",
         body: [
-          "`workspaceId` comes from the sidebar in the dashboard and `apiKey` comes from Settings → API Keys. Use `http://localhost:3001` locally or your hosted backend URL in production.",
-          "Only `apiUrl`, `workspaceId`, and `apiKey` are required. Optional operational controls (`batchSize`, `flushInterval`, `maxQueueSize`, `retryAttempts`) have safe defaults."
+          "`apiKey` comes from Settings > API Keys. Use `http://localhost:3001` locally or your hosted backend URL in production.",
+          "Only `apiKey` is required for local defaults. Set `apiUrl` to your hosted backend URL in production. Optional operational controls (`batchSize`, `flushInterval`, `maxQueueSize`, `retryAttempts`, `requestTimeoutMs`) have safe defaults."
         ],
-        code: "TokenWatch.init({\n  apiUrl: \"https://tokenwatch.example.com\",\n  workspaceId: \"ws_xxxxxxxx\",\n  apiKey: \"tw_live_xxxxx\",\n  maxQueueSize: 1000,\n  batchSize: 50,\n  flushInterval: 25,\n  retryAttempts: 3,\n  debug: false\n});"
+        code: "TokenWatch.init({\n  apiUrl: \"https://tokenwatch.example.com\",\n  apiKey: process.env.TOKENWATCH_API_KEY,\n  maxQueueSize: 1000,\n  batchSize: 50,\n  flushInterval: 25,\n  retryAttempts: 3,\n  requestTimeoutMs: 30000,\n  debug: false\n});"
       },
       {
         heading: "Delivery behavior",
@@ -120,7 +119,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
         body: [
           "Planned webhook payloads will be workspace-scoped and signed. Receivers should verify signatures, handle idempotency, and return 2xx only after durable processing."
         ],
-        code: "{\n  \"id\": \"evt_123\",\n  \"workspaceId\": \"ws_xxxxxxxx\",\n  \"type\": \"budget.threshold_exceeded\",\n  \"createdAt\": 1760000000000,\n  \"data\": {\n    \"spendToday\": 52.4,\n    \"threshold\": 50\n  }\n}"
+        code: "{\n  \"id\": \"evt_123\",\n  \"workspace_id\": \"ws_xxxxxxxx\",\n  \"type\": \"budget.threshold_exceeded\",\n  \"created_at\": 1760000000000,\n  \"data\": {\n    \"spend_today\": 52.4,\n    \"threshold\": 50\n  }\n}"
       },
       {
         heading: "Local testing",
@@ -183,3 +182,4 @@ export default function DocsPage({ slug }: DocsPageProps) {
     </AppLayout>
   );
 }
+

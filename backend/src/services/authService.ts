@@ -52,14 +52,123 @@ export interface WorkspaceSettings {
 export interface ApiKey {
   id: string;
   workspace_id: string;
+  label: string;
+  type: ApiKeyType;
+  permissions: ApiKeyPermission[];
+  created_by: string | null;
   created_at: number;
+  last_used_at: number | null;
+  expires_at: number | null;
   revoked_at: number | null;
   last_rotated_at?: number | null;
+}
+
+export type ApiKeyType = "SDK" | "OPENCLAW" | "CI" | "READONLY" | "ADMIN" | "SERVICE";
+
+export type ApiKeyPermission =
+  | "telemetry:ingest"
+  | "workspace:read"
+  | "analytics:read"
+  | "requests:read"
+  | "reports:read"
+  | "recommendations:read"
+  | "forecast:read"
+  | "copilot:use"
+  | "admin:all";
+
+export interface ApiKeyIdentity {
+  keyId: string;
+  workspaceId: string;
+  ownerId: string;
+  workspace: Workspace;
+  type: ApiKeyType;
+  permissions: ApiKeyPermission[];
+  label: string;
+  expiresAt: number | null;
+}
+
+export interface CreateWorkspaceApiKeyInput {
+  workspaceId: string;
+  createdBy: string | null;
+  label?: string;
+  type?: ApiKeyType;
+  permissions?: ApiKeyPermission[];
+  expiresAt?: number | null;
 }
 
 export interface WorkspaceCreationResult {
   workspace: Workspace;
   apiKey: string;
+}
+
+const API_KEY_TYPES = new Set<ApiKeyType>(["SDK", "OPENCLAW", "CI", "READONLY", "ADMIN", "SERVICE"]);
+const API_KEY_PREFIX_BY_TYPE: Record<ApiKeyType, string> = {
+  SDK: "tw_sdk_",
+  OPENCLAW: "tw_oc_",
+  CI: "tw_ci_",
+  READONLY: "tw_ro_",
+  ADMIN: "tw_admin_",
+  SERVICE: "tw_service_"
+};
+const API_KEY_TYPE_BY_PREFIX = new Map(Object.entries(API_KEY_PREFIX_BY_TYPE).map(([type, prefix]) => [prefix, type as ApiKeyType]));
+const API_KEY_LAST_USED_WRITE_INTERVAL_MS = 60_000;
+const API_KEY_PERMISSIONS = new Set<ApiKeyPermission>([
+  "telemetry:ingest",
+  "workspace:read",
+  "analytics:read",
+  "requests:read",
+  "reports:read",
+  "recommendations:read",
+  "forecast:read",
+  "copilot:use",
+  "admin:all"
+]);
+
+export const DEFAULT_PERMISSIONS_BY_KEY_TYPE: Record<ApiKeyType, ApiKeyPermission[]> = {
+  SDK: ["telemetry:ingest"],
+  OPENCLAW: ["workspace:read", "analytics:read", "requests:read", "reports:read", "recommendations:read", "forecast:read", "copilot:use"],
+  CI: ["telemetry:ingest", "analytics:read", "reports:read"],
+  READONLY: ["workspace:read", "analytics:read", "requests:read", "reports:read", "recommendations:read", "forecast:read"],
+  ADMIN: ["admin:all"],
+  SERVICE: ["workspace:read", "analytics:read", "requests:read", "reports:read", "recommendations:read", "forecast:read", "copilot:use"]
+};
+
+const MAX_PERMISSIONS_BY_KEY_TYPE: Record<ApiKeyType, Set<ApiKeyPermission>> = Object.fromEntries(
+  Object.entries(DEFAULT_PERMISSIONS_BY_KEY_TYPE).map(([type, permissions]) => [type, new Set(permissions)])
+) as Record<ApiKeyType, Set<ApiKeyPermission>>;
+
+export function normalizeApiKeyType(value: unknown): ApiKeyType {
+  const candidate = typeof value === "string" ? value.trim().toUpperCase() : "SDK";
+  return API_KEY_TYPES.has(candidate as ApiKeyType) ? candidate as ApiKeyType : "SDK";
+}
+
+export function normalizeApiKeyPermissions(type: ApiKeyType, value: unknown): ApiKeyPermission[] {
+  const raw = Array.isArray(value) ? value : DEFAULT_PERMISSIONS_BY_KEY_TYPE[type];
+  const allowed = MAX_PERMISSIONS_BY_KEY_TYPE[type];
+  const permissions = raw.filter((permission): permission is ApiKeyPermission => (
+    typeof permission === "string" &&
+    API_KEY_PERMISSIONS.has(permission as ApiKeyPermission) &&
+    allowed.has(permission as ApiKeyPermission)
+  ));
+  const deduped = [...new Set(permissions)];
+  return deduped.length > 0 || Array.isArray(value) ? deduped : DEFAULT_PERMISSIONS_BY_KEY_TYPE[type];
+}
+
+export function hasApiKeyPermission(identity: Pick<ApiKeyIdentity, "permissions">, permission: ApiKeyPermission): boolean {
+  return identity.permissions.includes("admin:all") || identity.permissions.includes(permission);
+}
+
+export function getApiKeyPrefix(type: ApiKeyType): string {
+  return API_KEY_PREFIX_BY_TYPE[type];
+}
+
+export function readApiKeyTypeFromKey(plainKey: string): ApiKeyType | null {
+  for (const [prefix, type] of API_KEY_TYPE_BY_PREFIX) {
+    if (plainKey.startsWith(prefix)) {
+      return type;
+    }
+  }
+  return null;
 }
 
 /**
@@ -144,10 +253,10 @@ export async function createWorkspace(userId: string, name: string): Promise<Wor
       await settingsStmt.run(settingsId, workspaceId, true, true, false, false, true, 50, 2000, user?.email?.toLowerCase() ?? null, false, now, now);
 
       const apiKeyId = generateId("key");
-      const plainKey = generateApiKey();
+      const plainKey = generateApiKey(getApiKeyPrefix("SDK"));
       const keyHash = hashApiKey(plainKey);
-      const keyStmt = db.prepare("INSERT INTO api_keys (id, workspace_id, key_hash, created_at) VALUES (?, ?, ?, ?)");
-      await keyStmt.run(apiKeyId, workspaceId, keyHash, now);
+      const keyStmt = db.prepare("INSERT INTO api_keys (id, workspace_id, key_hash, label, type, permissions, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+      await keyStmt.run(apiKeyId, workspaceId, keyHash, "Default SDK key", "SDK", JSON.stringify(DEFAULT_PERMISSIONS_BY_KEY_TYPE.SDK), userId, now);
 
       return {
         workspace: { id: workspaceId, user_id: userId, name, monthly_budget: 100, webhook_url: null, created_at: now, updated_at: now },
@@ -247,17 +356,40 @@ export async function getWorkspaceSettings(workspaceId: string): Promise<Workspa
 /**
  * Generate a new API key for a workspace
  */
-export async function generateWorkspaceApiKey(workspaceId: string): Promise<string> {
+export async function generateWorkspaceApiKey(input: string | CreateWorkspaceApiKeyInput): Promise<string> {
   const db = getDatabase();
-  const apiKeyId = generateId("key");
-  const plainKey = generateApiKey();
-  const keyHash = hashApiKey(plainKey);
   const now = Date.now();
+  const options: CreateWorkspaceApiKeyInput = typeof input === "string"
+    ? { workspaceId: input, createdBy: null, type: "SDK" }
+    : input;
+  const type = normalizeApiKeyType(options.type);
+  const permissions = normalizeApiKeyPermissions(type, options.permissions);
+  const label = normalizeApiKeyLabel(options.label, `${type} key`);
+  const expiresAt = options.expiresAt === null || options.expiresAt === undefined ? null : Number(options.expiresAt);
 
-  const stmt = db.prepare("INSERT INTO api_keys (id, workspace_id, key_hash, created_at) VALUES (?, ?, ?, ?)");
-  await stmt.run(apiKeyId, workspaceId, keyHash, now);
+  const stmt = db.prepare("INSERT INTO api_keys (id, workspace_id, key_hash, label, type, permissions, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const apiKeyId = generateId("key");
+    const plainKey = generateApiKey(getApiKeyPrefix(type));
+    const keyHash = hashApiKey(plainKey);
+    try {
+      await stmt.run(apiKeyId, options.workspaceId, keyHash, label, type, JSON.stringify(permissions), options.createdBy, now, Number.isFinite(expiresAt) ? expiresAt : null);
+      console.info(`[api-key:create] workspace=${options.workspaceId} key=${apiKeyId} type=${type} created_by=${options.createdBy ?? "system"}`);
+      return plainKey;
+    } catch (error) {
+      if (attempt === 2) {
+        throw error;
+      }
+    }
+  }
 
-  return plainKey;
+  throw new Error("Unable to create API key");
+}
+
+export async function listWorkspaceApiKeys(workspaceId: string): Promise<ApiKey[]> {
+  const db = getDatabase();
+  const stmt = db.prepare("SELECT id, workspace_id, label, type, permissions, created_by, created_at, last_used_at, expires_at, revoked_at FROM api_keys WHERE workspace_id = ? ORDER BY created_at DESC");
+  return (await stmt.all<ApiKey>(workspaceId)).map(normalizeApiKey);
 }
 
 /**
@@ -265,7 +397,7 @@ export async function generateWorkspaceApiKey(workspaceId: string): Promise<stri
  */
 export async function getWorkspaceApiKey(workspaceId: string): Promise<ApiKey | null> {
   const db = getDatabase();
-  const stmt = db.prepare("SELECT * FROM api_keys WHERE workspace_id = ? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1");
+  const stmt = db.prepare("SELECT * FROM api_keys WHERE workspace_id = ? AND revoked_at IS NULL AND type = 'SDK' ORDER BY created_at DESC LIMIT 1");
   const row = await stmt.get<ApiKey>(workspaceId);
   if (!row) return null;
   const normalized = normalizeApiKey(row);
@@ -283,9 +415,10 @@ export async function getWorkspaceApiKeyLastRotatedAt(workspaceId: string): Prom
 /**
  * Verify an API key and return the workspace ID if valid
  */
-export async function verifyApiKey(plainKey: string): Promise<{ workspaceId: string; workspace: Workspace } | null> {
+export async function verifyApiKey(plainKey: string): Promise<ApiKeyIdentity | null> {
   try {
-    if (!plainKey.startsWith("tw_live_") || plainKey.length < 24) {
+    const declaredType = readApiKeyTypeFromKey(plainKey);
+    if (!declaredType || plainKey.length < getApiKeyPrefix(declaredType).length + 64) {
       return null;
     }
 
@@ -293,7 +426,23 @@ export async function verifyApiKey(plainKey: string): Promise<{ workspaceId: str
     const keyHash = hashApiKey(plainKey);
 
     const stmt = db.prepare(
-      `SELECT api_keys.workspace_id, api_keys.key_hash, workspaces.* FROM api_keys
+      `SELECT
+         api_keys.id AS api_key_id,
+         api_keys.workspace_id,
+         api_keys.key_hash,
+         api_keys.label,
+         api_keys.type,
+         api_keys.permissions,
+         api_keys.last_used_at,
+         api_keys.expires_at,
+         workspaces.id AS workspace_row_id,
+         workspaces.user_id,
+         workspaces.name,
+         workspaces.monthly_budget,
+         workspaces.webhook_url,
+         workspaces.created_at,
+         workspaces.updated_at
+       FROM api_keys
        JOIN workspaces ON api_keys.workspace_id = workspaces.id
        WHERE api_keys.key_hash = ? AND api_keys.revoked_at IS NULL`
     );
@@ -305,9 +454,18 @@ export async function verifyApiKey(plainKey: string): Promise<{ workspaceId: str
     if (!safeEqualHex(keyHash, result.key_hash)) {
       return null;
     }
+    const expiresAt = result.expires_at === null || result.expires_at === undefined ? null : Number(result.expires_at);
+    if (expiresAt !== null && expiresAt <= Date.now()) {
+      return null;
+    }
+
+    const storedType = normalizeApiKeyType(result.type);
+    if (storedType !== declaredType) {
+      return null;
+    }
 
     const workspace: Workspace = {
-      id: result.id,
+      id: result.workspace_row_id,
       user_id: result.user_id,
       name: result.name,
       monthly_budget: Number(result.monthly_budget),
@@ -316,7 +474,18 @@ export async function verifyApiKey(plainKey: string): Promise<{ workspaceId: str
       updated_at: Number(result.updated_at),
     };
 
-    return { workspaceId: result.workspace_id, workspace };
+    updateApiKeyLastUsedSoon(result.api_key_id, Number(result.last_used_at ?? 0));
+
+    return {
+      keyId: result.api_key_id,
+      workspaceId: result.workspace_id,
+      ownerId: result.user_id,
+      workspace,
+      type: storedType,
+      permissions: normalizeApiKeyPermissions(storedType, parsePermissions(result.permissions)),
+      label: String(result.label ?? "API key"),
+      expiresAt
+    };
   } catch (error) {
     return null;
   }
@@ -330,15 +499,15 @@ export async function regenerateWorkspaceApiKey(workspaceId: string): Promise<st
     const db = getDatabase();
     return await db.transaction(async () => {
       const apiKeyId = generateId("key");
-      const plainKey = generateApiKey();
+      const plainKey = generateApiKey(getApiKeyPrefix("SDK"));
       const keyHash = hashApiKey(plainKey);
       const now = Date.now();
 
-      const revokeStmt = db.prepare("UPDATE api_keys SET revoked_at = ? WHERE workspace_id = ? AND revoked_at IS NULL");
+      const revokeStmt = db.prepare("UPDATE api_keys SET revoked_at = ? WHERE workspace_id = ? AND revoked_at IS NULL AND type = 'SDK'");
       await revokeStmt.run(now, workspaceId);
 
-      const insertStmt = db.prepare("INSERT INTO api_keys (id, workspace_id, key_hash, created_at) VALUES (?, ?, ?, ?)");
-      await insertStmt.run(apiKeyId, workspaceId, keyHash, now);
+      const insertStmt = db.prepare("INSERT INTO api_keys (id, workspace_id, key_hash, label, type, permissions, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+      await insertStmt.run(apiKeyId, workspaceId, keyHash, "Default SDK key", "SDK", JSON.stringify(DEFAULT_PERMISSIONS_BY_KEY_TYPE.SDK), now);
 
       return plainKey;
     });
@@ -346,6 +515,29 @@ export async function regenerateWorkspaceApiKey(workspaceId: string): Promise<st
   } catch (error) {
     return null;
   }
+}
+
+export async function revokeWorkspaceApiKey(workspaceId: string, keyId: string): Promise<boolean> {
+  const db = getDatabase();
+  const result = await db.prepare("UPDATE api_keys SET revoked_at = ? WHERE workspace_id = ? AND id = ? AND revoked_at IS NULL")
+    .run(Date.now(), workspaceId, keyId);
+  if (result.changes > 0) {
+    console.info(`[api-key:revoke] workspace=${workspaceId} key=${keyId}`);
+  }
+  return result.changes > 0;
+}
+
+function updateApiKeyLastUsedSoon(keyId: string, previousLastUsedAt: number): void {
+  const now = Date.now();
+  if (previousLastUsedAt && now - previousLastUsedAt < API_KEY_LAST_USED_WRITE_INTERVAL_MS) {
+    return;
+  }
+  setImmediate(() => {
+    const db = getDatabase();
+    void db.prepare("UPDATE api_keys SET last_used_at = ? WHERE id = ? AND (last_used_at IS NULL OR last_used_at < ?)")
+      .run(now, keyId, now - API_KEY_LAST_USED_WRITE_INTERVAL_MS)
+      .catch((error) => console.warn(`[api-key:last-used:error] key=${keyId} ${error instanceof Error ? error.message : String(error)}`));
+  });
 }
 
 function safeEqualHex(a: string, b: string): boolean {
@@ -452,9 +644,35 @@ function normalizeWorkspaceSettings(row: WorkspaceSettings): WorkspaceSettings {
 function normalizeApiKey(row: ApiKey): ApiKey {
   return {
     ...row,
+    label: row.label ?? "API key",
+    type: normalizeApiKeyType(row.type),
+    permissions: normalizeApiKeyPermissions(normalizeApiKeyType(row.type), parsePermissions(row.permissions)),
+    created_by: row.created_by ?? null,
     created_at: Number(row.created_at),
-    revoked_at: row.revoked_at === null ? null : Number(row.revoked_at)
+    last_used_at: row.last_used_at === null || row.last_used_at === undefined ? null : Number(row.last_used_at),
+    expires_at: row.expires_at === null || row.expires_at === undefined ? null : Number(row.expires_at),
+    revoked_at: row.revoked_at === null || row.revoked_at === undefined ? null : Number(row.revoked_at)
   };
+}
+
+function normalizeApiKeyLabel(value: unknown, fallback: string): string {
+  const label = typeof value === "string" ? value.trim() : "";
+  return (label || fallback).slice(0, 120);
+}
+
+function parsePermissions(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 /**

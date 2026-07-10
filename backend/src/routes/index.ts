@@ -11,6 +11,7 @@ import { createIntelligenceRouter } from "./intelligence";
 import { createReportsRouter } from "./reports";
 import { createForecastRouter } from "./forecast";
 import { createCopilotRouter } from "./copilot";
+import { createMeRouter } from "./me";
 
 export function registerRoutes(app: Express): void {
   app.use("/", createHealthRouter());
@@ -18,6 +19,7 @@ export function registerRoutes(app: Express): void {
   
   // Auth routes
   app.use("/api/auth", createAuthRouter());
+  app.use("/api", createMeRouter());
   
   // Workspace routes (protected)
   app.use("/api/workspaces", createWorkspacesRouter());

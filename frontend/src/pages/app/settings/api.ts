@@ -81,6 +81,21 @@ export interface WebhookTestResponse {
   error?: string;
 }
 
+export type ApiKeyType = "SDK" | "OPENCLAW" | "CI" | "READONLY" | "ADMIN" | "SERVICE";
+
+export interface WorkspaceApiKey {
+  id: string;
+  workspace_id: string;
+  label: string;
+  type: ApiKeyType;
+  permissions: string[];
+  created_by: string | null;
+  created_at: number;
+  last_used_at: number | null;
+  expires_at: number | null;
+  revoked_at: number | null;
+}
+
 export async function rotateWorkspaceApiKey(
   workspaceId: string,
   confirmation: string
@@ -95,6 +110,30 @@ export async function rotateWorkspaceApiKey(
   }
 
   return response.json();
+}
+
+export async function fetchWorkspaceApiKeys(workspaceId: string): Promise<WorkspaceApiKey[]> {
+  const response = await authFetch(`/api/workspaces/${workspaceId}/api-keys`);
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to load API keys"));
+  const body = await response.json();
+  return body.apiKeys ?? [];
+}
+
+export async function createWorkspaceApiKey(
+  workspaceId: string,
+  body: { label: string; type: ApiKeyType; expires_at?: number | null }
+): Promise<{ apiKey: string; apiKeyMeta: WorkspaceApiKey }> {
+  const response = await authFetch(`/api/workspaces/${workspaceId}/api-keys`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to create API key"));
+  return response.json();
+}
+
+export async function revokeWorkspaceApiKey(workspaceId: string, keyId: string): Promise<void> {
+  const response = await authFetch(`/api/workspaces/${workspaceId}/api-keys/${keyId}/revoke`, { method: "POST" });
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to revoke API key"));
 }
 
 export async function deleteWorkspaceById(workspaceId: string, confirmation: string): Promise<void> {

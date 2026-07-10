@@ -2,14 +2,15 @@ export type TokenWatchProvider = "openai" | "anthropic" | (string & {});
 
 export interface TokenWatchInitOptions {
   apiKey: string;
-  workspaceId: string;
-  apiUrl: string;
+  workspaceId?: string;
+  apiUrl?: string;
   endpoint?: string;
   headers?: Record<string, string>;
   maxQueueSize?: number;
   batchSize?: number;
   flushInterval?: number;
   retryAttempts?: number;
+  requestTimeoutMs?: number;
   debug?: boolean;
 }
 
