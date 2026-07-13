@@ -15,7 +15,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
         body: [
           "The frontend should point to the backend API URL. The backend stores telemetry in PostgreSQL.",
           "Local example: use http://localhost:3001 for the backend.",
-          "Production example: use your deployed backend URL.",
+          "Production example: https://ai-api-cost-tracker-backend-b3d9b21b579a.herokuapp.com/",
           "SSE endpoint requirement: /api/telemetry/stream must remain reachable.",
           "Reverse proxy consideration: avoid buffering SSE responses and preserve long-lived connections."
         ]
@@ -41,7 +41,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
         heading: "Need credentials?",
         body: [
           "API Key: Dashboard → Settings → API Keys.",
-          "apiUrl: Local [http://localhost:3001](http://localhost:3001), hosted = your deployed backend URL."
+          "apiUrl: Local [http://localhost:3001](http://localhost:3001), hosted = https://ai-api-cost-tracker-backend-b3d9b21b579a.herokuapp.com/"
         ],
       },
       {
@@ -93,7 +93,7 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
           "`apiKey` comes from Settings > API Keys. Use `http://localhost:3001` locally or your hosted backend URL in production.",
           "Only `apiKey` is required for local defaults. Set `apiUrl` to your hosted backend URL in production. Optional operational controls (`batchSize`, `flushInterval`, `maxQueueSize`, `retryAttempts`, `requestTimeoutMs`) have safe defaults."
         ],
-        code: "TokenWatch.init({\n  apiUrl: \"https://tokenwatch.example.com\",\n  apiKey: process.env.TOKENWATCH_API_KEY,\n  maxQueueSize: 1000,\n  batchSize: 50,\n  flushInterval: 25,\n  retryAttempts: 3,\n  requestTimeoutMs: 30000,\n  debug: false\n});"
+        code: "TokenWatch.init({\n  apiUrl: \"https://ai-api-cost-tracker-backend-b3d9b21b579a.herokuapp.com/\",\n  apiKey: process.env.TOKENWATCH_API_KEY,\n  maxQueueSize: 1000,\n  batchSize: 50,\n  flushInterval: 25,\n  retryAttempts: 3,\n  requestTimeoutMs: 30000,\n  debug: false\n});"
       },
       {
         heading: "Delivery behavior",
