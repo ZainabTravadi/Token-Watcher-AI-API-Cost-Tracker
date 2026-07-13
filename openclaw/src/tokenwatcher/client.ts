@@ -46,7 +46,7 @@ export class TokenWatcherClient {
     return new TokenWatcherClient({ ...this.config, runtimeApiKey: apiKey }, this.logger);
   }
 
-  async resolveTelegramWebhook(input: { integrationId: string; telegramSecret: string | null }): Promise<{
+  async resolveTelegramWebhook(input: { integrationId: string; telegramSecret: string | null; chatId?: number | null }): Promise<{
     context: {
       integrationId: string;
       workspaceId: string;

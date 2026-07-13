@@ -39,6 +39,17 @@ interface IntegrationRow extends Omit<TelegramIntegration, "metadata" | "api_key
 
 const TELEGRAM_TIMEOUT_MS = 8000;
 
+interface TelegramSendMessageResponse {
+  ok?: boolean;
+  result?: {
+    message_id?: number;
+    chat?: {
+      id?: number;
+    };
+  };
+  description?: string;
+}
+
 export async function verifyTelegramBotToken(botToken: string): Promise<TelegramBotIdentity> {
   const token = normalizeBotToken(botToken);
   if (!token) {
@@ -139,12 +150,38 @@ export async function connectTelegramIntegration(input: {
   });
 }
 
-export async function testTelegramIntegration(workspaceId: string, userId: string): Promise<{ ok: true; bot: { id: string; username: string }; webhookStatus: string }> {
+export async function testTelegramIntegration(workspaceId: string, userId: string): Promise<{ ok: true; bot: { id: string; username: string }; webhookStatus: string; chatId: number; messageId: number | null }> {
   const row = await requireIntegration(workspaceId);
-  const bot = await verifyTelegramBotToken(decryptSecret(row.encrypted_bot_token));
+  const botToken = decryptSecret(row.encrypted_bot_token);
+  const bot = await verifyTelegramBotToken(botToken);
+  const chatId = getLastTelegramChatId(row);
+
+  if (chatId === null) {
+    console.warn("[telegram:test:missing-chat]", { workspaceId, integrationId: row.id, bot: `@${row.telegram_bot_username}` });
+    throw new Error("No Telegram chat has been seen yet. Send the bot a message first, then test again.");
+  }
+
+  const testMessage = buildTelegramTestMessage(workspaceId, row.telegram_bot_username);
+  const delivery = await sendTelegramMessage({
+    botToken,
+    chatId,
+    text: testMessage,
+    workspaceId,
+    integrationId: row.id,
+    botUsername: row.telegram_bot_username
+  });
+
   await updateIntegrationStatus(row.id, "connected", null);
-  await logAuditEvent({ workspaceId, actorUserId: userId, eventType: "telegram.integration.tested", targetType: "telegram_integration", targetId: row.id });
-  return { ok: true, bot, webhookStatus: "connected" };
+  await logAuditEvent({
+    workspaceId,
+    actorUserId: userId,
+    eventType: "telegram.integration.tested",
+    targetType: "telegram_integration",
+    targetId: row.id,
+    metadata: { telegram_bot_id: bot.id, telegram_bot_username: bot.username, chat_id: chatId, message_id: delivery.messageId }
+  });
+
+  return { ok: true, bot, webhookStatus: "connected", chatId, messageId: delivery.messageId };
 }
 
 export async function regenerateTelegramOpenClawKey(workspaceId: string, userId: string): Promise<TelegramIntegration> {
@@ -187,6 +224,7 @@ export async function deleteTelegramIntegration(workspaceId: string, userId: str
 export async function resolveTelegramWebhook(input: {
   integrationId: string;
   telegramSecret: string | null | undefined;
+  chatId?: number | null;
 }): Promise<{
   integrationId: string;
   workspaceId: string;
@@ -201,7 +239,7 @@ export async function resolveTelegramWebhook(input: {
   if (!safeSecretEquals(row.webhook_secret, input.telegramSecret)) {
     throw new Error("Invalid Telegram webhook secret");
   }
-  await updateIntegrationSeen(row.id);
+  await updateIntegrationSeen(row, input.chatId ?? null);
   return {
     integrationId: row.id,
     workspaceId: row.workspace_id,
@@ -274,15 +312,20 @@ async function updateIntegrationStatus(id: string, status: string, lastError: st
     .run(status, lastError, Date.now(), id);
 }
 
-async function updateIntegrationSeen(id: string): Promise<void> {
-  await getDatabase().prepare("UPDATE telegram_integrations SET last_connected_at = ?, updated_at = ?, webhook_status = 'connected', last_error = NULL WHERE id = ?")
-    .run(Date.now(), Date.now(), id);
+async function updateIntegrationSeen(row: IntegrationRow, chatId: number | null): Promise<void> {
+  const metadata = normalizeMetadata(row.metadata);
+  if (typeof chatId === "number" && Number.isFinite(chatId)) {
+    metadata.last_chat_id = Math.trunc(chatId);
+    metadata.last_chat_seen_at = Date.now();
+  }
+
+  await getDatabase().prepare(
+    "UPDATE telegram_integrations SET last_connected_at = ?, updated_at = ?, webhook_status = 'connected', last_error = NULL, metadata = ? WHERE id = ?"
+  ).run(Date.now(), Date.now(), JSON.stringify(metadata), row.id);
 }
 
 function normalizeIntegration(row: IntegrationRow): TelegramIntegration {
-  const metadata = typeof row.metadata === "string"
-    ? JSON.parse(row.metadata || "{}")
-    : row.metadata ?? {};
+  const metadata = normalizeMetadata(row.metadata);
   return {
     id: row.id,
     workspace_id: row.workspace_id,
@@ -299,4 +342,91 @@ function normalizeIntegration(row: IntegrationRow): TelegramIntegration {
     metadata,
     api_key_status: row.openclaw_api_key_id ? row.api_key_revoked_at ? "revoked" : "active" : "unknown"
   };
+}
+
+function normalizeMetadata(metadata: string | Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (typeof metadata === "string") {
+    try {
+      return JSON.parse(metadata || "{}") as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  return metadata ?? {};
+}
+
+function getLastTelegramChatId(row: IntegrationRow): number | null {
+  const metadata = normalizeMetadata(row.metadata);
+  return normalizeChatId(metadata.last_chat_id);
+}
+
+function normalizeChatId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+  }
+
+  return null;
+}
+
+function buildTelegramTestMessage(workspaceId: string, botUsername: string): string {
+  return [
+    "TokenWatch Telegram test message",
+    `Workspace: ${workspaceId}`,
+    `Bot: @${botUsername}`,
+    `Timestamp: ${new Date().toISOString()}`
+  ].join("\n");
+}
+
+async function sendTelegramMessage(input: {
+  botToken: string;
+  chatId: number;
+  text: string;
+  workspaceId: string;
+  integrationId: string;
+  botUsername: string;
+}): Promise<{ messageId: number | null }> {
+  console.info("[telegram:test:send:start]", {
+    workspaceId: input.workspaceId,
+    integrationId: input.integrationId,
+    chatId: input.chatId,
+    bot: `@${input.botUsername}`
+  });
+
+  const response = await fetch(`${getConfig().telegramApiUrl}/bot${input.botToken}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({
+      chat_id: input.chatId,
+      text: input.text
+    }),
+    signal: AbortSignal.timeout(TELEGRAM_TIMEOUT_MS)
+  });
+
+  const body = await response.json().catch(() => null) as TelegramSendMessageResponse | null;
+  if (!response.ok || !body?.ok || !body.result?.message_id) {
+    const description = body?.description || `Telegram sendMessage failed with ${response.status}`;
+    console.error("[telegram:test:send:error]", {
+      workspaceId: input.workspaceId,
+      integrationId: input.integrationId,
+      chatId: input.chatId,
+      status: response.status,
+      description
+    });
+    throw new Error(description);
+  }
+
+  console.info("[telegram:test:send:ok]", {
+    workspaceId: input.workspaceId,
+    integrationId: input.integrationId,
+    chatId: input.chatId,
+    messageId: body.result.message_id
+  });
+
+  return { messageId: body.result.message_id ?? null };
 }

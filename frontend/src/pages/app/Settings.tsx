@@ -376,9 +376,14 @@ export default function Settings() {
     if (!currentWorkspace) return;
     try {
       setTestingTelegram(true);
-      await testTelegramIntegration(currentWorkspace.id);
+      const result = await testTelegramIntegration(currentWorkspace.id);
       await queryClient.invalidateQueries({ queryKey: ["telegram-integration", currentWorkspace.id] });
-      toast({ title: "Telegram test succeeded", description: "Stored credentials verified." });
+      toast({
+        title: "Telegram test succeeded",
+        description: result.chatId
+          ? `Delivered to chat ${result.chatId}.`
+          : "Delivered to the last Telegram chat that contacted the bot."
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to test Telegram";
       toast({ title: "Telegram test failed", description: message, variant: "destructive" });

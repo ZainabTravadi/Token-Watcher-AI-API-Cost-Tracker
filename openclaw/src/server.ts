@@ -94,7 +94,8 @@ export function createOpenClawServer(
         try {
           resolved = await tokenWatcher.resolveTelegramWebhook({
             integrationId,
-            telegramSecret: receivedSecret
+            telegramSecret: receivedSecret,
+            chatId
           });
         } catch (error) {
           logger.warn("telegram.webhook.rejected", {

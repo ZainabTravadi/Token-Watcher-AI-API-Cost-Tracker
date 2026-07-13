@@ -137,7 +137,7 @@ export async function connectTelegramIntegration(workspaceId: string, botToken: 
   return response.json();
 }
 
-export async function testTelegramIntegration(workspaceId: string): Promise<{ ok: true; webhookStatus: string }> {
+export async function testTelegramIntegration(workspaceId: string): Promise<{ ok: true; webhookStatus: string; chatId?: number; messageId?: number | null }> {
   const response = await authFetch("/api/integrations/telegram/test", {
     method: "POST",
     body: JSON.stringify({ workspaceId }),

@@ -147,11 +147,20 @@ export function createTelegramIntegrationsRouter(): Router {
       if (!requireInternalSecret(req, res)) return;
       const integrationId = typeof req.body?.integrationId === "string" ? req.body.integrationId : "";
       const telegramSecret = typeof req.body?.telegramSecret === "string" ? req.body.telegramSecret : null;
+      const rawChatId = req.body?.chatId;
+      const chatId = typeof rawChatId === "number" && Number.isFinite(rawChatId)
+        ? Math.trunc(rawChatId)
+        : typeof rawChatId === "string" && rawChatId.trim()
+          ? (() => {
+              const parsed = Number(rawChatId);
+              return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+            })()
+          : null;
       if (!integrationId) {
         res.status(400).json({ error: "Integration ID required" });
         return;
       }
-      const context = await resolveTelegramWebhook({ integrationId, telegramSecret });
+      const context = await resolveTelegramWebhook({ integrationId, telegramSecret, chatId });
       res.status(200).json({ context });
     } catch (error) {
       res.status(403).json({ error: error instanceof Error ? error.message : "Telegram webhook rejected" });
