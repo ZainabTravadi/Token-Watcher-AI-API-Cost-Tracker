@@ -10,14 +10,16 @@ export interface OpenClawConfig {
   host: string;
   port: number;
   logLevel: LogLevel;
-  telegramBotToken: string;
-  telegramSecretToken: string | null;
   telegramApiUrl: string;
   tokenWatcherApiUrl: string;
-  tokenWatcherApiKey: string;
+  openClawInternalSecret: string;
+  runtimeApiKey?: string;
   tokenWatcherTimeoutMs: number;
   tokenWatcherUserAgent: string;
 }
+
+const DEV_OPENCLAW_INTERNAL_SECRET = "dev-openclaw-internal-secret-please-set-in-production";
+const MINIMUM_OPENCLAW_SECRET_LENGTH = 32;
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -25,11 +27,6 @@ function required(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
-}
-
-function optional(name: string): string | null {
-  const value = process.env[name]?.trim();
-  return value ? value : null;
 }
 
 function parsePort(value: string | undefined, fallback: number): number {
@@ -55,15 +52,20 @@ function parseLogLevel(value: string | undefined): LogLevel {
 }
 
 export function getConfig(): OpenClawConfig {
+  const nodeEnv = (process.env.NODE_ENV ?? "development").trim().toLowerCase();
+  const openClawInternalSecret = process.env.OPENCLAW_INTERNAL_SECRET?.trim() || DEV_OPENCLAW_INTERNAL_SECRET;
+
+  if (nodeEnv === "production" && (!process.env.OPENCLAW_INTERNAL_SECRET || openClawInternalSecret.length < MINIMUM_OPENCLAW_SECRET_LENGTH)) {
+    throw new Error("OPENCLAW_INTERNAL_SECRET must be set to a secure 32+ character infrastructure secret in production.");
+  }
+
   return {
     host: process.env.OPENCLAW_HOST?.trim() || "0.0.0.0",
     port: parsePort(process.env.PORT ?? process.env.OPENCLAW_PORT, 3300),
     logLevel: parseLogLevel(process.env.OPENCLAW_LOG_LEVEL),
-    telegramBotToken: required("OPENCLAW_TELEGRAM_BOT_TOKEN"),
-    telegramSecretToken: optional("OPENCLAW_TELEGRAM_SECRET_TOKEN"),
     telegramApiUrl: (process.env.OPENCLAW_TELEGRAM_API_URL?.trim() || "https://api.telegram.org").replace(/\/+$/u, ""),
     tokenWatcherApiUrl: required("TOKENWATCHER_API_URL").replace(/\/+$/u, ""),
-    tokenWatcherApiKey: required("TOKENWATCHER_API_KEY"),
+    openClawInternalSecret,
     tokenWatcherTimeoutMs: parseTimeout(process.env.TOKENWATCHER_TIMEOUT_MS, 60000),
     tokenWatcherUserAgent: process.env.TOKENWATCHER_USER_AGENT?.trim() || "OpenClaw-TokenWatcher/1.0"
   };

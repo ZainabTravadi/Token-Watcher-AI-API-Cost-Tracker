@@ -96,6 +96,73 @@ export interface WorkspaceApiKey {
   revoked_at: number | null;
 }
 
+export interface TelegramIntegration {
+  id: string;
+  workspace_id: string;
+  telegram_bot_id: string;
+  telegram_bot_username: string;
+  webhook_url: string | null;
+  webhook_status: string;
+  enabled: boolean;
+  created_by: string | null;
+  created_at: number;
+  updated_at: number;
+  last_connected_at: number | null;
+  last_error: string | null;
+  api_key_status: "active" | "revoked" | "unknown";
+}
+
+export async function fetchTelegramIntegrationStatus(workspaceId: string): Promise<TelegramIntegration | null> {
+  const response = await authFetch(`/api/integrations/telegram/status?workspaceId=${encodeURIComponent(workspaceId)}`);
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to load Telegram integration"));
+  const body = await response.json();
+  return body.integration ?? null;
+}
+
+export async function verifyTelegramBot(workspaceId: string, botToken: string): Promise<{ bot: { id: string; username: string; first_name?: string } }> {
+  const response = await authFetch("/api/integrations/telegram/verify", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, botToken }),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to verify Telegram bot"));
+  return response.json();
+}
+
+export async function connectTelegramIntegration(workspaceId: string, botToken: string): Promise<{ integration: TelegramIntegration }> {
+  const response = await authFetch("/api/integrations/telegram/connect", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, botToken }),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to connect Telegram"));
+  return response.json();
+}
+
+export async function testTelegramIntegration(workspaceId: string): Promise<{ ok: true; webhookStatus: string }> {
+  const response = await authFetch("/api/integrations/telegram/test", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId }),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to test Telegram"));
+  return response.json();
+}
+
+export async function regenerateTelegramOpenClawKey(workspaceId: string): Promise<{ integration: TelegramIntegration }> {
+  const response = await authFetch("/api/integrations/telegram/regenerate-openclaw-key", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId }),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to regenerate OpenClaw key"));
+  return response.json();
+}
+
+export async function disconnectTelegramIntegration(workspaceId: string): Promise<void> {
+  const response = await authFetch("/api/integrations/telegram", {
+    method: "DELETE",
+    body: JSON.stringify({ workspaceId }),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to disconnect Telegram"));
+}
+
 export async function rotateWorkspaceApiKey(
   workspaceId: string,
   confirmation: string

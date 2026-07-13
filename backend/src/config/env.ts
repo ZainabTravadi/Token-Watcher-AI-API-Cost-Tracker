@@ -15,12 +15,19 @@ export interface AppConfig {
   resendApiKey: string | null;
   resendFromEmail: string;
   appUrl: string;
+  openClawPublicUrl: string | null;
+  openClawInternalSecret: string | null;
+  telegramApiUrl: string;
+  secretEncryptionKey: string;
   requireSignedIngest: boolean;
   ingestSignatureToleranceMs: number;
 }
 
 const DEV_JWT_SECRET = "dev-secret-key-please-set-in-production";
 const MINIMUM_JWT_SECRET_LENGTH = 32;
+const DEV_ENCRYPTION_KEY = "dev-tokenwatch-secret-encryption-key";
+const DEV_OPENCLAW_INTERNAL_SECRET = "dev-openclaw-internal-secret-please-set-in-production";
+const MINIMUM_OPENCLAW_SECRET_LENGTH = 32;
 const TRUTHY_BOOLEAN_STRINGS = new Set(["1", "true", "yes", "on"]);
 
 function parseBoolean(value?: string): boolean {
@@ -82,6 +89,14 @@ export function getConfig(): AppConfig {
   if (nodeEnv === "production" && !process.env.CORS_ORIGIN) {
     throw new Error("CORS_ORIGIN is required in production and must list the allowed frontend origin(s).");
   }
+  const secretEncryptionKey = process.env.TOKENWATCHER_SECRET_ENCRYPTION_KEY ?? DEV_ENCRYPTION_KEY;
+  if (nodeEnv === "production" && (!process.env.TOKENWATCHER_SECRET_ENCRYPTION_KEY || secretEncryptionKey.length < 32)) {
+    throw new Error("TOKENWATCHER_SECRET_ENCRYPTION_KEY must be set to a secure 32+ character secret in production.");
+  }
+  const openClawInternalSecret = process.env.OPENCLAW_INTERNAL_SECRET?.trim() || DEV_OPENCLAW_INTERNAL_SECRET;
+  if (nodeEnv === "production" && (!process.env.OPENCLAW_INTERNAL_SECRET || openClawInternalSecret.length < MINIMUM_OPENCLAW_SECRET_LENGTH)) {
+    throw new Error("OPENCLAW_INTERNAL_SECRET must be set to a secure 32+ character infrastructure secret in production.");
+  }
   
   return {
     port: Number.parseInt(process.env.PORT ?? "3001", 10),
@@ -93,6 +108,10 @@ export function getConfig(): AppConfig {
     resendApiKey: process.env.RESEND_API_KEY ?? null,
     resendFromEmail: process.env.RESEND_FROM_EMAIL ?? "TokenWatcher <notifications@tokenwatch.local>",
     appUrl: process.env.APP_URL ?? "http://localhost:8080",
+    openClawPublicUrl: process.env.OPENCLAW_PUBLIC_URL?.trim().replace(/\/+$/u, "") || null,
+    openClawInternalSecret,
+    telegramApiUrl: (process.env.OPENCLAW_TELEGRAM_API_URL?.trim() || process.env.TELEGRAM_API_URL?.trim() || "https://api.telegram.org").replace(/\/+$/u, ""),
+    secretEncryptionKey,
     requireSignedIngest: parseBoolean(process.env.TOKENWATCH_REQUIRE_SIGNED_INGEST),
     ingestSignatureToleranceMs: parsePositiveInteger(process.env.TOKENWATCH_INGEST_SIGNATURE_TOLERANCE_MS, 300000)
   };

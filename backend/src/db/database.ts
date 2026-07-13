@@ -18,6 +18,12 @@ import {
   createApiKeysHashActiveIndexSql,
   createApiKeysExpiresAtIndexSql,
   createApiKeysRevokedAtIndexSql,
+  createAuditEventsTableSql,
+  createAuditEventsWorkspaceCreatedAtIndexSql,
+  createTelegramIntegrationsTableSql,
+  createTelegramIntegrationsWorkspaceIndexSql,
+  createTelegramIntegrationsBotIdIndexSql,
+  createTelegramIntegrationsEnabledIndexSql,
   createWorkspaceSettingsTableSql
 } from "./schema";
 
@@ -55,7 +61,13 @@ async function applySchema(db: PgDatabase): Promise<void> {
   await db.exec(createApiKeysHashActiveIndexSql);
   await db.exec(createApiKeysExpiresAtIndexSql);
   await db.exec(createApiKeysRevokedAtIndexSql);
+  await db.exec(createAuditEventsTableSql);
+  await db.exec(createAuditEventsWorkspaceCreatedAtIndexSql);
   await db.exec(createWorkspaceSettingsTableSql);
+  await db.exec(createTelegramIntegrationsTableSql);
+  await db.exec(createTelegramIntegrationsWorkspaceIndexSql);
+  await db.exec(createTelegramIntegrationsBotIdIndexSql);
+  await db.exec(createTelegramIntegrationsEnabledIndexSql);
 
   await ensureSchemaUpdates(db);
 
@@ -77,6 +89,8 @@ async function ensureSchemaUpdates(db: PgDatabase): Promise<void> {
   await db.exec("ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS created_by TEXT");
   await db.exec("ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS last_used_at BIGINT");
   await db.exec("ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS expires_at BIGINT");
+  await db.exec("ALTER TABLE IF EXISTS telegram_integrations ADD COLUMN IF NOT EXISTS openclaw_api_key_id TEXT");
+  await db.exec("ALTER TABLE IF EXISTS telegram_integrations ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb");
   await db.exec("ALTER TABLE IF EXISTS requests ADD COLUMN IF NOT EXISTS metadata JSONB");
   await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS alert_on_latency BOOLEAN NOT NULL DEFAULT false");
   await db.exec("ALTER TABLE IF EXISTS workspace_settings ADD COLUMN IF NOT EXISTS daily_digest BOOLEAN NOT NULL DEFAULT false");

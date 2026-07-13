@@ -12,6 +12,7 @@ import { createReportsRouter } from "./reports";
 import { createForecastRouter } from "./forecast";
 import { createCopilotRouter } from "./copilot";
 import { createMeRouter } from "./me";
+import { createTelegramIntegrationsRouter } from "./telegramIntegrations";
 
 export function registerRoutes(app: Express): void {
   app.use("/", createHealthRouter());
@@ -23,6 +24,7 @@ export function registerRoutes(app: Express): void {
   
   // Workspace routes (protected)
   app.use("/api/workspaces", createWorkspacesRouter());
+  app.use("/api/integrations", createTelegramIntegrationsRouter());
   
   // Existing routes
   app.use("/api", createRequestsRouter());

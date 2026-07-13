@@ -14,6 +14,7 @@ import { SettingsBudgetSection } from "./settings/SettingsBudgetSection";
 import { SettingsDangerZoneSection } from "./settings/SettingsDangerZoneSection";
 import { SettingsEmailNotificationsSection } from "./settings/SettingsEmailNotificationsSection";
 import { SettingsSecuritySection } from "./settings/SettingsSecuritySection";
+import { SettingsTelegramSection } from "./settings/SettingsTelegramSection";
 import { SettingsUsageSection } from "./settings/SettingsUsageSection";
 import { SettingsWebhookSection } from "./settings/SettingsWebhookSection";
 import { SettingsWorkspaceNameSection } from "./settings/SettingsWorkspaceNameSection";
@@ -21,16 +22,22 @@ import { DangerousActionDialog } from "./settings/DangerousActionDialog";
 import {
   deleteWorkspaceById,
   createWorkspaceApiKey,
+  connectTelegramIntegration,
   fetchWorkspaceApiKeys,
+  fetchTelegramIntegrationStatus,
   fetchWorkspaceUsage,
+  disconnectTelegramIntegration,
+  regenerateTelegramOpenClawKey,
   revokeWorkspaceApiKey,
   rotateWorkspaceApiKey,
   sendDailyDigest,
   sendTestEmail,
   sendWeeklyReport,
   testWorkspaceWebhook,
+  testTelegramIntegration,
   updateWorkspaceMeta,
   updateWorkspaceSettings,
+  verifyTelegramBot,
   type ApiKeyType,
 } from "./settings/api";
 import {
@@ -105,6 +112,13 @@ export default function Settings() {
   const [keyLabel, setKeyLabel] = useState("Production OpenClaw");
   const [keyType, setKeyType] = useState<ApiKeyType>("OPENCLAW");
   const [keyExpiresAt, setKeyExpiresAt] = useState("");
+  const [telegramBotToken, setTelegramBotToken] = useState("");
+  const [telegramBotTokenError, setTelegramBotTokenError] = useState<string | null>(null);
+  const [verifyingTelegram, setVerifyingTelegram] = useState(false);
+  const [connectingTelegram, setConnectingTelegram] = useState(false);
+  const [testingTelegram, setTestingTelegram] = useState(false);
+  const [regeneratingTelegramKey, setRegeneratingTelegramKey] = useState(false);
+  const [disconnectingTelegram, setDisconnectingTelegram] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,6 +133,14 @@ export default function Settings() {
   const apiKeysQuery = useQuery({
     queryKey: ["workspace-api-keys", currentWorkspace?.id],
     queryFn: () => fetchWorkspaceApiKeys(currentWorkspace!.id),
+    enabled: !!currentWorkspace?.id,
+    staleTime: 5_000,
+    retry: 1,
+  });
+
+  const telegramQuery = useQuery({
+    queryKey: ["telegram-integration", currentWorkspace?.id],
+    queryFn: () => fetchTelegramIntegrationStatus(currentWorkspace!.id),
     enabled: !!currentWorkspace?.id,
     staleTime: 5_000,
     retry: 1,
@@ -157,6 +179,8 @@ export default function Settings() {
 
     if (workspaceChanged) {
       setPlainApiKey(currentWorkspace.apiKey?.value ?? null);
+      setTelegramBotToken("");
+      setTelegramBotTokenError(null);
       setDeleteConfirmation("");
       setRotateDialogOpen(false);
       setDeleteDialogOpen(false);
@@ -171,6 +195,7 @@ export default function Settings() {
     await queryClient.invalidateQueries({ queryKey: ["health"] });
     await queryClient.invalidateQueries({ queryKey: ["workspace-usage"] });
     await queryClient.invalidateQueries({ queryKey: ["workspace-api-keys"] });
+    await queryClient.invalidateQueries({ queryKey: ["telegram-integration"] });
   };
 
   const alertDraft = useMemo(
@@ -309,6 +334,88 @@ export default function Settings() {
       toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setRevokingKey(null);
+    }
+  };
+
+  const handleVerifyTelegram = async () => {
+    if (!currentWorkspace) return;
+    try {
+      setVerifyingTelegram(true);
+      setTelegramBotTokenError(null);
+      const result = await verifyTelegramBot(currentWorkspace.id, telegramBotToken);
+      toast({ title: "Telegram bot verified", description: `@${result.bot.username} is ready to connect.` });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to verify Telegram bot";
+      setTelegramBotTokenError(message);
+      toast({ title: "Telegram verification failed", description: message, variant: "destructive" });
+    } finally {
+      setVerifyingTelegram(false);
+    }
+  };
+
+  const handleConnectTelegram = async () => {
+    if (!currentWorkspace) return;
+    try {
+      setConnectingTelegram(true);
+      setTelegramBotTokenError(null);
+      const result = await connectTelegramIntegration(currentWorkspace.id, telegramBotToken);
+      setTelegramBotToken("");
+      await queryClient.invalidateQueries({ queryKey: ["telegram-integration", currentWorkspace.id] });
+      await queryClient.invalidateQueries({ queryKey: ["workspace-api-keys", currentWorkspace.id] });
+      toast({ title: "Telegram connected", description: `@${result.integration.telegram_bot_username} is connected to this workspace.` });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to connect Telegram";
+      setTelegramBotTokenError(message);
+      toast({ title: "Telegram connection failed", description: message, variant: "destructive" });
+    } finally {
+      setConnectingTelegram(false);
+    }
+  };
+
+  const handleTestTelegram = async () => {
+    if (!currentWorkspace) return;
+    try {
+      setTestingTelegram(true);
+      await testTelegramIntegration(currentWorkspace.id);
+      await queryClient.invalidateQueries({ queryKey: ["telegram-integration", currentWorkspace.id] });
+      toast({ title: "Telegram test succeeded", description: "Stored credentials verified." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to test Telegram";
+      toast({ title: "Telegram test failed", description: message, variant: "destructive" });
+    } finally {
+      setTestingTelegram(false);
+    }
+  };
+
+  const handleRegenerateTelegramKey = async () => {
+    if (!currentWorkspace) return;
+    try {
+      setRegeneratingTelegramKey(true);
+      await regenerateTelegramOpenClawKey(currentWorkspace.id);
+      await queryClient.invalidateQueries({ queryKey: ["telegram-integration", currentWorkspace.id] });
+      await queryClient.invalidateQueries({ queryKey: ["workspace-api-keys", currentWorkspace.id] });
+      toast({ title: "OpenClaw key regenerated", description: "Telegram will use the new encrypted workspace key." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to regenerate OpenClaw key";
+      toast({ title: "Key regeneration failed", description: message, variant: "destructive" });
+    } finally {
+      setRegeneratingTelegramKey(false);
+    }
+  };
+
+  const handleDisconnectTelegram = async () => {
+    if (!currentWorkspace) return;
+    try {
+      setDisconnectingTelegram(true);
+      await disconnectTelegramIntegration(currentWorkspace.id);
+      await queryClient.invalidateQueries({ queryKey: ["telegram-integration", currentWorkspace.id] });
+      await queryClient.invalidateQueries({ queryKey: ["workspace-api-keys", currentWorkspace.id] });
+      toast({ title: "Telegram disconnected", description: "The integration key was revoked." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to disconnect Telegram";
+      toast({ title: "Disconnect failed", description: message, variant: "destructive" });
+    } finally {
+      setDisconnectingTelegram(false);
     }
   };
 
@@ -728,6 +835,27 @@ export default function Settings() {
           onCopy={() => void handleCopyApiKey()}
           onRequestRotate={() => setRotateDialogOpen(true)}
           onRevoke={(keyId) => void handleRevokeApiKey(keyId)}
+        />
+
+        <SettingsTelegramSection
+          integration={telegramQuery.data}
+          botToken={telegramBotToken}
+          botTokenError={telegramBotTokenError}
+          isLoading={telegramQuery.isLoading}
+          isVerifying={verifyingTelegram}
+          isConnecting={connectingTelegram}
+          isTesting={testingTelegram}
+          isRegenerating={regeneratingTelegramKey}
+          isDisconnecting={disconnectingTelegram}
+          onBotTokenChange={(value) => {
+            setTelegramBotToken(value);
+            setTelegramBotTokenError(null);
+          }}
+          onVerify={() => void handleVerifyTelegram()}
+          onConnect={() => void handleConnectTelegram()}
+          onTest={() => void handleTestTelegram()}
+          onRegenerate={() => void handleRegenerateTelegramKey()}
+          onDisconnect={() => void handleDisconnectTelegram()}
         />
 
         <SettingsWorkspaceNameSection

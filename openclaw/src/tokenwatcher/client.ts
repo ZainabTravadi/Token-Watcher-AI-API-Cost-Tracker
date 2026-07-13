@@ -6,6 +6,8 @@ interface RequestOptions {
   method?: "GET" | "POST";
   query?: Record<string, string | number | undefined>;
   body?: unknown;
+  apiKey?: string;
+  internal?: boolean;
 }
 
 export class TokenWatcherClient {
@@ -40,6 +42,26 @@ export class TokenWatcherClient {
     return this.requestJson<T>(route, options);
   }
 
+  withApiKey(apiKey: string): TokenWatcherClient {
+    return new TokenWatcherClient({ ...this.config, runtimeApiKey: apiKey }, this.logger);
+  }
+
+  async resolveTelegramWebhook(input: { integrationId: string; telegramSecret: string | null }): Promise<{
+    context: {
+      integrationId: string;
+      workspaceId: string;
+      botToken: string;
+      openclawApiKey: string;
+      telegramBotUsername: string;
+    };
+  }> {
+    return this.requestJson("/api/integrations/telegram/webhook", {
+      method: "POST",
+      body: input,
+      internal: true
+    });
+  }
+
   async getIdentity(): Promise<{
     identity?: {
       type?: string;
@@ -70,8 +92,14 @@ export class TokenWatcherClient {
     const headers = new Headers({
       "Accept": "application/json",
       "User-Agent": this.config.tokenWatcherUserAgent,
-      "Authorization": `Bearer ${this.config.tokenWatcherApiKey}`
     });
+    const apiKey = options.apiKey ?? this.config.runtimeApiKey;
+    if (apiKey) {
+      headers.set("Authorization", `Bearer ${apiKey}`);
+    }
+    if (options.internal) {
+      headers.set("X-OpenClaw-Internal-Secret", this.config.openClawInternalSecret);
+    }
 
     if (options.body !== undefined) {
       headers.set("Content-Type", "application/json");

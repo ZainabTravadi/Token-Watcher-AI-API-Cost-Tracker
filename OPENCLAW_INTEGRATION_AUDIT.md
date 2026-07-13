@@ -2,61 +2,41 @@
 
 ## Final Architecture
 
-OpenClaw uses TokenWatcher API-key authentication only.
+OpenClaw is stateless. Customer-specific bot tokens and OpenClaw API keys live only in `telegram_integrations`, encrypted at rest and scoped to the owning workspace.
 
 ```mermaid
 flowchart LR
   Telegram["Telegram"]
   OpenClaw["OpenClaw"]
-  Key["Authorization: Bearer TOKENWATCHER_API_KEY"]
-  Backend["TokenWatcher Backend"]
-  Workspace["Workspace resolved from API key"]
+  Resolver["/api/integrations/telegram/webhook"]
+  Table["telegram_integrations"]
+  Workspace["Workspace"]
   Services["Analytics / Reports / Forecast / Recommendations / Copilot"]
 
   Telegram --> OpenClaw
-  OpenClaw --> Key
-  Key --> Backend
-  Backend --> Workspace
+  OpenClaw --> Resolver
+  Resolver --> Table
+  Table --> Workspace
   Workspace --> Services
 ```
 
-## Removed Architecture
+## Runtime Rules
 
-OpenClaw must not use dashboard login, store JWTs, use dashboard user credentials, or supply a workspace selector.
+- OpenClaw host configuration is infrastructure-only.
+- Dashboard users connect Telegram from Settings.
+- TokenWatcher verifies the BotFather token, generates an OpenClaw API key for that workspace, stores both encrypted, and registers the webhook.
+- Webhook requests are routed by `integrationId` and Telegram secret validation.
+- Stored secrets are never returned to the dashboard after creation.
 
-## Required Environment
+## Required Platform Environment
 
 ```text
 TOKENWATCHER_API_URL=https://api.example.com
-TOKENWATCHER_API_KEY=tw_oc_...
-OPENCLAW_TELEGRAM_BOT_TOKEN=...
+OPENCLAW_INTERNAL_SECRET=shared-platform-secret
+TOKENWATCHER_SECRET_ENCRYPTION_KEY=shared-encryption-secret
+OPENCLAW_PUBLIC_URL=https://openclaw.example.com
 ```
-
-## Backend Contract
-
-The backend validates the API key, verifies status/expiration/revocation, updates `last_used_at`, resolves the workspace and owner from the key, and enforces endpoint permissions.
-
-OpenClaw keys receive:
-
-- `workspace:read`
-- `analytics:read`
-- `requests:read`
-- `reports:read`
-- `recommendations:read`
-- `forecast:read`
-- `copilot:use`
-
-SDK keys receive only:
-
-- `telemetry:ingest`
 
 ## Migration
 
-Run:
-
-```powershell
-cd backend
-npm run keys:create-openclaw
-```
-
-The script creates one OpenClaw key per workspace and prints each secret once. Existing telemetry, SDK keys, users, and workspaces are not modified.
+Existing single-tenant OpenClaw deployments should remove customer-specific env vars and reconnect Telegram from each workspace dashboard. Existing telemetry, SDK keys, users, and workspaces are not modified.

@@ -220,22 +220,16 @@ See [Deployment Guide](./DEPLOYMENT.md) for local development commands, hosted d
 
 ### OpenClaw Deployment
 
-OpenClaw uses a workspace-scoped `OPENCLAW` API key. It never logs in with a human account and never receives a workspace ID.
+OpenClaw is stateless. Customers connect their own Telegram bot from Dashboard > Settings > Telegram; TokenWatcher stores bot tokens and OpenClaw keys encrypted per workspace.
 
 Required environment:
 
 ```bash
 TOKENWATCHER_API_URL=https://your-tokenwatcher-backend.example
-TOKENWATCHER_API_KEY=tw_oc_xxxxx
-OPENCLAW_TELEGRAM_BOT_TOKEN=xxxxx
+OPENCLAW_INTERNAL_SECRET=shared-platform-secret
 ```
 
-Create the key from Dashboard > Settings > API keys, or migrate existing workspaces with:
-
-```bash
-cd backend
-npm run keys:create-openclaw
-```
+Do not deploy OpenClaw with customer bot tokens or customer workspace API keys.
 
 ### Frontend Deployment
 

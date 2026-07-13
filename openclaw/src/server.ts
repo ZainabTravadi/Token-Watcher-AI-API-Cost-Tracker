@@ -1,5 +1,4 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
-import { timingSafeEqual } from "node:crypto";
 import type { OpenClawConfig } from "./config/env";
 import { formatUserFacingError } from "./errors";
 import type { Logger } from "./logger";
@@ -7,6 +6,7 @@ import { routeIntent } from "./router/intentRouter";
 import { renderTelegramResponse } from "./telegram/render";
 import type { TelegramUpdate } from "./telegram/types";
 import { TelegramTransport } from "./telegram/transport";
+import { TokenWatcherClient } from "./tokenwatcher/client";
 import { TokenWatcherToolRegistry } from "./tokenwatcher/tools";
 
 const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024;
@@ -27,15 +27,6 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   return body ? JSON.parse(body) : {};
 }
 
-function secretsMatch(expected: string, received: string | string[] | undefined): boolean {
-  if (typeof received !== "string") {
-    return false;
-  }
-  const left = Buffer.from(expected);
-  const right = Buffer.from(received);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
 function writeJson(response: ServerResponse, statusCode: number, payload: unknown): void {
   response.statusCode = statusCode;
   response.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -49,7 +40,7 @@ function notFound(response: ServerResponse): void {
 export function createOpenClawServer(
   config: OpenClawConfig,
   logger: Logger,
-  tools: TokenWatcherToolRegistry,
+  tokenWatcher: TokenWatcherClient,
   telegram: TelegramTransport
 ): http.Server {
   return http.createServer(async (request, response) => {
@@ -66,12 +57,19 @@ export function createOpenClawServer(
         return;
       }
 
-      if (request.method === "POST" && url.pathname === "/telegram/webhook") {
-        const expectedSecret = config.telegramSecretToken;
+      const webhookMatch = url.pathname.match(/^\/telegram\/webhook(?:\/([^/]+))?$/u);
+      if (request.method === "POST" && webhookMatch) {
+        const integrationId = webhookMatch[1] ? decodeURIComponent(webhookMatch[1]) : null;
         const receivedSecret = request.headers["x-telegram-bot-api-secret-token"];
-        if (expectedSecret && !secretsMatch(expectedSecret, receivedSecret)) {
-          logger.warn("telegram.webhook.rejected", { reason: "invalid_secret" });
+        if (typeof receivedSecret !== "string") {
+          logger.warn("telegram.webhook.rejected", { integrationId, reason: "missing_secret" });
           writeJson(response, 403, { error: "Forbidden" });
+          return;
+        }
+
+        if (!integrationId) {
+          logger.warn("telegram.webhook.rejected", { reason: "missing_integration_id" });
+          writeJson(response, 400, { error: "Integration ID required" });
           return;
         }
 
@@ -92,6 +90,23 @@ export function createOpenClawServer(
           return;
         }
 
+        let resolved: Awaited<ReturnType<TokenWatcherClient["resolveTelegramWebhook"]>>;
+        try {
+          resolved = await tokenWatcher.resolveTelegramWebhook({
+            integrationId,
+            telegramSecret: receivedSecret
+          });
+        } catch (error) {
+          logger.warn("telegram.webhook.rejected", {
+            integrationId,
+            reason: error instanceof Error ? error.message : String(error)
+          });
+          writeJson(response, 403, { error: "Forbidden" });
+          return;
+        }
+        const scopedClient = tokenWatcher.withApiKey(resolved.context.openclawApiKey);
+        const tools = new TokenWatcherToolRegistry(scopedClient, logger);
+
         try {
           const invocation = routeIntent(message);
           logger.info("telegram.webhook.received", {
@@ -102,7 +117,7 @@ export function createOpenClawServer(
 
           const result = await tools.execute(invocation);
           const reply = renderTelegramResponse(result);
-          await telegram.sendMessage(chatId, reply);
+          await telegram.sendMessage(resolved.context.botToken, chatId, reply);
 
           writeJson(response, 200, {
             ok: true,
@@ -116,7 +131,15 @@ export function createOpenClawServer(
             updateId: update.update_id,
             error: error instanceof Error ? error.message : String(error)
           });
-          await telegram.sendMessage(chatId, formatUserFacingError(error));
+          try {
+            await telegram.sendMessage(resolved.context.botToken, chatId, formatUserFacingError(error));
+          } catch (sendError) {
+            logger.error("telegram.error_reply.failed", {
+              chatId,
+              updateId: update.update_id,
+              error: sendError instanceof Error ? sendError.message : String(sendError)
+            });
+          }
           writeJson(response, 200, { ok: true, handledError: true });
           return;
         }

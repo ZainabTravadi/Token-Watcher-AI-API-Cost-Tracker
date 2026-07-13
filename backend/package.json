@@ -8,7 +8,6 @@
     "dev": "tsx watch src/main.ts",
     "seed": "tsx src/scripts/seed.ts",
     "db:init": "tsx src/scripts/init_postgres.ts",
-    "keys:create-openclaw": "tsx src/scripts/create_openclaw_keys.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test:auth": "tsx test-workspace-system.ts",

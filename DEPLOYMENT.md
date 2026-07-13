@@ -96,8 +96,9 @@ Only variables documented in the repository are listed here. Do not invent varia
 | `TELEMETRY_RETENTION_APPLY` | No | When `true` the retention script will apply deletions (use with care) |
 | `ENABLE_SIMULATORS` | No | Enable simulators in non-production/testing environments |
 | `TOKENWATCHER_API_URL` | Yes (OpenClaw) | TokenWatcher backend URL for OpenClaw |
-| `TOKENWATCHER_API_KEY` | Yes (OpenClaw) | Workspace-scoped API key of type `OPENCLAW` |
-| `OPENCLAW_TELEGRAM_BOT_TOKEN` | Yes (OpenClaw) | Telegram bot token |
+| `OPENCLAW_INTERNAL_SECRET` | Yes (backend/OpenClaw) | Shared platform secret for OpenClaw-to-backend integration resolution |
+| `OPENCLAW_PUBLIC_URL` | Yes (backend) | Public OpenClaw base URL used when registering Telegram webhooks |
+| `TOKENWATCHER_SECRET_ENCRYPTION_KEY` | Yes (backend) | Master key for encrypting stored integration secrets |
 
 > Note: Copy `.env.example` → `.env` and populate these variables as required.
 
@@ -137,25 +138,17 @@ Health endpoint: `GET /api/health` — reports database connection status and op
 
 ### OpenClaw deployment
 
-- Create an `OPENCLAW` key from Dashboard > Settings > API keys.
-- Configure OpenClaw with only `TOKENWATCHER_API_URL`, `TOKENWATCHER_API_KEY`, and `OPENCLAW_TELEGRAM_BOT_TOKEN`.
-- Do not deploy OpenClaw with dashboard user credentials or dashboard JWTs.
-
-For existing workspaces, generate OpenClaw keys:
-
-```bash
-cd backend
-npm run keys:create-openclaw
-```
-
-The command prints each new secret once. Store it in your deployment secret manager.
+- Configure OpenClaw with infrastructure settings only: `TOKENWATCHER_API_URL`, `OPENCLAW_INTERNAL_SECRET`, host/port, and logging.
+- Configure the backend with the same `OPENCLAW_INTERNAL_SECRET`, `OPENCLAW_PUBLIC_URL`, and `TOKENWATCHER_SECRET_ENCRYPTION_KEY`.
+- Customers connect Telegram from Dashboard > Settings > Telegram. TokenWatcher verifies the bot, generates a workspace OpenClaw key, stores secrets encrypted, and registers the webhook.
+- Do not deploy OpenClaw with customer bot tokens, customer workspace API keys, dashboard user credentials, or dashboard JWTs.
 
 ---
 
 ## Configuration
 
 - Copy `.env.example` → `.env` and set values for production.
-- Required in production: `NODE_ENV=production`, `JWT_SECRET` (strong, 32+ chars), `DATABASE_URL`.
+- Required in production: `NODE_ENV=production`, `JWT_SECRET` (strong, 32+ chars), `DATABASE_URL`, `TOKENWATCHER_SECRET_ENCRYPTION_KEY`, `OPENCLAW_INTERNAL_SECRET`, `OPENCLAW_PUBLIC_URL`.
 - Recommended vars: `PORT` (default 3001), `TELEMETRY_RETENTION_DAYS` (optional)
 
 ---

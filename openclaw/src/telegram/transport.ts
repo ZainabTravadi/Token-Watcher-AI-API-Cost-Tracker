@@ -8,9 +8,9 @@ export class TelegramTransport {
     private readonly logger: Logger
   ) {}
 
-  async sendMessage(chatId: number, text: string): Promise<SendMessageResponse> {
+  async sendMessage(botToken: string, chatId: number, text: string): Promise<SendMessageResponse> {
     const response = await fetch(
-      `${this.config.telegramApiUrl}/bot${this.config.telegramBotToken}/sendMessage`,
+      `${this.config.telegramApiUrl}/bot${botToken}/sendMessage`,
       {
         method: "POST",
         headers: {

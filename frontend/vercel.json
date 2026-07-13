@@ -3,6 +3,12 @@
   "installCommand": "npm install",
   "outputDirectory": "dist",
   "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
   "env": {
     "VITE_TOKENWATCH_API_URL": "https://ai-api-cost-tracker-backend-b3d9b21b579a.herokuapp.com"
   }

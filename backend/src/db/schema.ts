@@ -40,6 +40,46 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 `;
 
+export const createAuditEventsTableSql = `
+CREATE TABLE IF NOT EXISTS audit_events (
+  id BIGSERIAL PRIMARY KEY,
+  workspace_id TEXT,
+  actor_user_id TEXT,
+  event_type TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at BIGINT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+`;
+
+export const createTelegramIntegrationsTableSql = `
+CREATE TABLE IF NOT EXISTS telegram_integrations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL UNIQUE,
+  telegram_bot_id TEXT NOT NULL UNIQUE,
+  telegram_bot_username TEXT NOT NULL,
+  encrypted_bot_token TEXT NOT NULL,
+  encrypted_openclaw_api_key TEXT NOT NULL,
+  openclaw_api_key_id TEXT,
+  webhook_secret TEXT NOT NULL UNIQUE,
+  webhook_url TEXT,
+  webhook_status TEXT NOT NULL DEFAULT 'pending',
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  created_by TEXT,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  last_connected_at BIGINT,
+  last_error TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (openclaw_api_key_id) REFERENCES api_keys(id) ON DELETE SET NULL
+);
+`;
+
 export const createWorkspaceSettingsTableSql = `
 CREATE TABLE IF NOT EXISTS workspace_settings (
   id TEXT PRIMARY KEY,
@@ -142,4 +182,20 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_expires_at ON api_keys (expires_at);
 
 export const createApiKeysRevokedAtIndexSql = `
 CREATE INDEX IF NOT EXISTS idx_api_keys_revoked_at ON api_keys (revoked_at);
+`;
+
+export const createAuditEventsWorkspaceCreatedAtIndexSql = `
+CREATE INDEX IF NOT EXISTS idx_audit_events_workspace_created_at ON audit_events (workspace_id, created_at DESC);
+`;
+
+export const createTelegramIntegrationsWorkspaceIndexSql = `
+CREATE INDEX IF NOT EXISTS idx_telegram_integrations_workspace_id ON telegram_integrations (workspace_id);
+`;
+
+export const createTelegramIntegrationsBotIdIndexSql = `
+CREATE INDEX IF NOT EXISTS idx_telegram_integrations_bot_id ON telegram_integrations (telegram_bot_id);
+`;
+
+export const createTelegramIntegrationsEnabledIndexSql = `
+CREATE INDEX IF NOT EXISTS idx_telegram_integrations_enabled ON telegram_integrations (enabled);
 `;
