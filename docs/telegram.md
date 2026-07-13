@@ -32,8 +32,6 @@ This guide explains how to connect a Telegram bot to TokenWatch and what users c
 3. Paste the BotFather token into the `Telegram Bot Token` field.
 4. Click `Connect`.
 
-◻️ Screenshot placeholder: add a capture of the TokenWatcher Telegram Integration panel here.
-
 ## Initialize The Chat
 
 After the connection succeeds:
