@@ -81,6 +81,7 @@ export async function connectTelegramIntegration(input: {
   webhookBaseUrl?: string | null;
 }): Promise<TelegramIntegration> {
   const db = getDatabase();
+  const config = getConfig();
   const token = normalizeBotToken(input.botToken);
   if (!token) {
     throw new Error("Telegram bot token is required");
@@ -94,6 +95,27 @@ export async function connectTelegramIntegration(input: {
   return db.transaction(async () => {
     const now = Date.now();
     const existing = await getIntegrationRowByWorkspace(input.workspaceId);
+    const id = existing?.id ?? generateId("tg");
+    const candidateWebhookUrl = buildWebhookUrl(id, input.webhookBaseUrl, config.openClawPublicUrl);
+    const webhookUrl = candidateWebhookUrl ?? existing?.webhook_url ?? null;
+
+    console.info("[telegram:connect:start]", {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      botId: bot.id,
+      botUsername: bot.username,
+      integrationId: id,
+      openClawPublicUrl: config.openClawPublicUrl,
+      webhookBaseUrl: input.webhookBaseUrl ?? null,
+      candidateWebhookUrl,
+      webhookUrl,
+      reusedExistingWebhookUrl: !candidateWebhookUrl && Boolean(existing?.webhook_url)
+    });
+
+    if (!webhookUrl) {
+      throw new Error("Telegram webhook registration requires OPENCLAW_PUBLIC_URL or an existing saved webhook URL.");
+    }
+
     if (existing?.openclaw_api_key_id) {
       await revokeWorkspaceApiKey(input.workspaceId, existing.openclaw_api_key_id);
     }
@@ -106,9 +128,7 @@ export async function connectTelegramIntegration(input: {
     });
     const openclawApiKeyHash = hashApiKey(openclawApiKey);
     const keyMeta = (await listWorkspaceApiKeys(input.workspaceId)).find((key) => key.type === "OPENCLAW" && key.revoked_at === null);
-    const id = existing?.id ?? generateId("tg");
     const webhookSecret = generateWebhookSecret();
-    const webhookUrl = buildWebhookUrl(id, input.webhookBaseUrl);
     const encryptedBotToken = encryptSecret(token);
     const encryptedOpenClawApiKey = encryptSecret(openclawApiKey);
     const metadata = {
@@ -143,9 +163,7 @@ export async function connectTelegramIntegration(input: {
       metadata: { telegram_bot_id: bot.id, telegram_bot_username: bot.username }
     });
 
-    if (webhookUrl) {
-      await registerTelegramWebhook(id, token, webhookUrl, webhookSecret);
-    }
+    await registerTelegramWebhook(id, token, webhookUrl, webhookSecret, config.telegramApiUrl);
     return (await getTelegramIntegrationStatus(input.workspaceId))!;
   });
 }
@@ -155,6 +173,16 @@ export async function testTelegramIntegration(workspaceId: string, userId: strin
   const botToken = decryptSecret(row.encrypted_bot_token);
   const bot = await verifyTelegramBotToken(botToken);
   const chatId = getLastTelegramChatId(row);
+  const telegramUserId = getLastTelegramUserId(row);
+
+  console.info("[telegram:test:lookup]", {
+    workspaceId,
+    userId,
+    integrationId: row.id,
+    chatId,
+    telegramUserId,
+    metadataSaved: Boolean(chatId !== null)
+  });
 
   if (chatId === null) {
     console.warn("[telegram:test:missing-chat]", { workspaceId, integrationId: row.id, bot: `@${row.telegram_bot_username}` });
@@ -225,6 +253,7 @@ export async function resolveTelegramWebhook(input: {
   integrationId: string;
   telegramSecret: string | null | undefined;
   chatId?: number | null;
+  telegramUserId?: number | null;
 }): Promise<{
   integrationId: string;
   workspaceId: string;
@@ -239,7 +268,7 @@ export async function resolveTelegramWebhook(input: {
   if (!safeSecretEquals(row.webhook_secret, input.telegramSecret)) {
     throw new Error("Invalid Telegram webhook secret");
   }
-  await updateIntegrationSeen(row, input.chatId ?? null);
+  await updateIntegrationSeen(row, input.chatId ?? null, input.telegramUserId ?? null);
   return {
     integrationId: row.id,
     workspaceId: row.workspace_id,
@@ -249,29 +278,91 @@ export async function resolveTelegramWebhook(input: {
   };
 }
 
-async function registerTelegramWebhook(integrationId: string, botToken: string, webhookUrl: string, webhookSecret: string): Promise<void> {
-  const response = await fetch(`${getConfig().telegramApiUrl}/bot${botToken}/setWebhook`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      url: webhookUrl,
-      secret_token: webhookSecret,
-      allowed_updates: ["message"]
-    }),
-    signal: AbortSignal.timeout(TELEGRAM_TIMEOUT_MS)
+async function registerTelegramWebhook(
+  integrationId: string,
+  botToken: string,
+  webhookUrl: string,
+  webhookSecret: string,
+  telegramApiUrl: string
+): Promise<void> {
+  const requestBody = {
+    url: webhookUrl,
+    secret_token: webhookSecret,
+    allowed_updates: ["message"]
+  };
+
+  console.info("[telegram:webhook:set:entered]", {
+    integrationId,
+    webhookUrl
   });
-  const body = await response.json().catch(() => null) as { ok?: boolean; description?: string } | null;
-  if (!response.ok || !body?.ok) {
-    const message = body?.description || "Telegram webhook registration failed";
-    await updateIntegrationStatus(integrationId, "error", message);
-    throw new Error(message);
+  console.info("[telegram:webhook:set:start]", {
+    integrationId,
+    webhookUrl,
+    telegramApiUrl,
+    allowedUpdates: requestBody.allowed_updates
+  });
+
+  const requestUrl = `${telegramApiUrl}/bot${botToken}/setWebhook`;
+  console.info("[telegram:webhook:set:request]", {
+    integrationId,
+    requestUrl,
+    requestBody
+  });
+
+  try {
+    const response = await fetch(requestUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(TELEGRAM_TIMEOUT_MS)
+    });
+    const responseText = await response.text();
+    console.info("[telegram:webhook:set:response]", {
+      integrationId,
+      webhookUrl,
+      status: response.status,
+      responseText
+    });
+
+    let body: { ok?: boolean; description?: string } | null = null;
+    try {
+      body = responseText ? JSON.parse(responseText) as { ok?: boolean; description?: string } : null;
+    } catch (parseError) {
+      console.error("[telegram:webhook:set:response-parse-error]", {
+        integrationId,
+        webhookUrl,
+        status: response.status,
+        responseText,
+        error: parseError instanceof Error ? parseError.message : String(parseError)
+      });
+    }
+
+    if (!response.ok || !body?.ok) {
+      const message = body?.description || `Telegram webhook registration failed with ${response.status}`;
+      await updateIntegrationStatus(integrationId, "error", message);
+      throw new Error(message);
+    }
+    await updateIntegrationStatus(integrationId, "connected", null);
+  } catch (error) {
+    console.error("[telegram:webhook:set:exception]", {
+      integrationId,
+      webhookUrl,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
   }
-  await updateIntegrationStatus(integrationId, "connected", null);
 }
 
-function buildWebhookUrl(integrationId: string, override?: string | null): string | null {
-  const base = override?.trim().replace(/\/+$/u, "") || getConfig().openClawPublicUrl;
-  return base ? `${base}/telegram/webhook/${encodeURIComponent(integrationId)}` : null;
+function buildWebhookUrl(integrationId: string, override?: string | null, openClawPublicUrl?: string | null): string | null {
+  const base = override?.trim().replace(/\/+$/u, "") || openClawPublicUrl || getConfig().openClawPublicUrl;
+  const webhookUrl = base ? `${base}/telegram/webhook/${encodeURIComponent(integrationId)}` : null;
+  console.info("[telegram:webhook:url:resolved]", {
+    integrationId,
+    override: override ?? null,
+    openClawPublicUrl: openClawPublicUrl ?? getConfig().openClawPublicUrl,
+    webhookUrl
+  });
+  return webhookUrl;
 }
 
 function normalizeBotToken(value: unknown): string {
@@ -312,16 +403,36 @@ async function updateIntegrationStatus(id: string, status: string, lastError: st
     .run(status, lastError, Date.now(), id);
 }
 
-async function updateIntegrationSeen(row: IntegrationRow, chatId: number | null): Promise<void> {
+async function updateIntegrationSeen(row: IntegrationRow, chatId: number | null, telegramUserId: number | null): Promise<void> {
   const metadata = normalizeMetadata(row.metadata);
   if (typeof chatId === "number" && Number.isFinite(chatId)) {
     metadata.last_chat_id = Math.trunc(chatId);
     metadata.last_chat_seen_at = Date.now();
   }
+  if (typeof telegramUserId === "number" && Number.isFinite(telegramUserId)) {
+    metadata.last_telegram_user_id = Math.trunc(telegramUserId);
+    metadata.last_telegram_user_seen_at = Date.now();
+  }
+
+  console.info("[telegram:webhook:save:start]", {
+    workspaceId: row.workspace_id,
+    integrationId: row.id,
+    chatId,
+    telegramUserId,
+    willSave: typeof chatId === "number" && Number.isFinite(chatId)
+  });
 
   await getDatabase().prepare(
     "UPDATE telegram_integrations SET last_connected_at = ?, updated_at = ?, webhook_status = 'connected', last_error = NULL, metadata = ? WHERE id = ?"
   ).run(Date.now(), Date.now(), JSON.stringify(metadata), row.id);
+
+  console.info("[telegram:webhook:save:ok]", {
+    workspaceId: row.workspace_id,
+    integrationId: row.id,
+    chatId: normalizeChatId(metadata.last_chat_id),
+    telegramUserId: normalizeChatId(metadata.last_telegram_user_id),
+    saved: typeof chatId === "number" && Number.isFinite(chatId)
+  });
 }
 
 function normalizeIntegration(row: IntegrationRow): TelegramIntegration {
@@ -359,6 +470,11 @@ function normalizeMetadata(metadata: string | Record<string, unknown> | null | u
 function getLastTelegramChatId(row: IntegrationRow): number | null {
   const metadata = normalizeMetadata(row.metadata);
   return normalizeChatId(metadata.last_chat_id);
+}
+
+function getLastTelegramUserId(row: IntegrationRow): number | null {
+  const metadata = normalizeMetadata(row.metadata);
+  return normalizeChatId(metadata.last_telegram_user_id);
 }
 
 function normalizeChatId(value: unknown): number | null {

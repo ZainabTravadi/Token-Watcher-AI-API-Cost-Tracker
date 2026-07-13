@@ -10,6 +10,31 @@ function pickReportType(message: string): ToolInvocation["input"] {
   return { type: "executive" };
 }
 
+function isAnalyticsOverviewMessage(message: string): boolean {
+  const analyticsSignals = [
+    /\b(?:give me|show|summar(?:y|ize|ise)|current)\s+(?:my\s+)?(?:today'?s|todays|today\s+)?(?:summary|dashboard|analytics|usage|spend|cost|telemetry)\b/u,
+    /\b(?:today'?s|todays|today)\s+(?:summary|dashboard|analytics|usage|spend|cost|telemetry)\b/u,
+    /\b(?:daily|usage|cost|dashboard|ai\s+usage)\s+summary\b/u,
+    /\b(?:summar(?:y|ize|ise))\s+(?:today'?s|todays|today\s+)?(?:usage|telemetry|analytics|dashboard|spend|cost)\b/u,
+    /\b(?:spend|usage|cost|analytics|telemetry)\s+today\b/u,
+    /\b(?:total\s+spend|current\s+analytics|current\s+usage|current\s+dashboard|show\s+dashboard|give me my dashboard|how much did i spend)\b/u
+  ];
+
+  return analyticsSignals.some((pattern) => pattern.test(message));
+}
+
+function isReportRequest(message: string): boolean {
+  if (/\b(?:weekly|monthly|executive|budget|infrastructure|optimization|governance)\s+report\b/u.test(message)) {
+    return true;
+  }
+
+  if (/\breport\b/u.test(message) || /\bbriefing\b/u.test(message)) {
+    return true;
+  }
+
+  return /\bsummary\b/u.test(message) && /\b(?:weekly|monthly|executive|budget|infrastructure|optimization|governance)\b/u.test(message);
+}
+
 export function routeIntent(rawMessage: string): ToolInvocation {
   const message = rawMessage.trim().toLowerCase();
 
@@ -33,6 +58,13 @@ export function routeIntent(rawMessage: string): ToolInvocation {
   if (/\brecommendation|recommendations|optimiz(e|ation)\b/u.test(message)) {
     return {
       name: "recommendations.list",
+      input: {}
+    };
+  }
+
+  if (isAnalyticsOverviewMessage(message)) {
+    return {
+      name: "analytics.overview",
       input: {}
     };
   }
@@ -118,7 +150,7 @@ export function routeIntent(rawMessage: string): ToolInvocation {
     };
   }
 
-  if (/\breport|summary|briefing\b/u.test(message)) {
+  if (isReportRequest(message)) {
     return {
       name: "report.get",
       input: pickReportType(message)

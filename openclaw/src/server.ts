@@ -84,18 +84,42 @@ export function createOpenClawServer(
         }
         const message = update.message?.text?.trim();
         const chatId = update.message?.chat?.id;
+        const telegramUserId = update.message?.from?.id ?? null;
+
+        logger.info("telegram.webhook.message", {
+          integrationId,
+          chatId: typeof chatId === "number" ? chatId : null,
+          telegramUserId,
+          updateId: update.update_id,
+          message
+        });
 
         if (!message || typeof chatId !== "number") {
+          logger.info("telegram.webhook.ignored", {
+            integrationId,
+            chatId: typeof chatId === "number" ? chatId : null,
+            telegramUserId,
+            reason: "missing_message_or_chat"
+          });
           writeJson(response, 200, { ok: true, ignored: true });
           return;
         }
+
+        logger.info("telegram.webhook.received", {
+          integrationId,
+          chatId,
+          telegramUserId,
+          updateId: update.update_id,
+          message
+        });
 
         let resolved: Awaited<ReturnType<TokenWatcherClient["resolveTelegramWebhook"]>>;
         try {
           resolved = await tokenWatcher.resolveTelegramWebhook({
             integrationId,
             telegramSecret: receivedSecret,
-            chatId
+            chatId,
+            telegramUserId
           });
         } catch (error) {
           logger.warn("telegram.webhook.rejected", {
@@ -110,15 +134,41 @@ export function createOpenClawServer(
 
         try {
           const invocation = routeIntent(message);
-          logger.info("telegram.webhook.received", {
+          logger.info("telegram.intent.selected", {
+            integrationId,
             chatId,
+            telegramUserId,
             updateId: update.update_id,
-            tool: invocation.name
+            message,
+            intent: invocation.name
           });
+
+          if (invocation.name === "copilot.chat") {
+            logger.warn("telegram.intent.generic_chat_fallback", {
+              integrationId,
+              chatId,
+              telegramUserId,
+              updateId: update.update_id,
+              message,
+              intent: invocation.name
+            });
+          }
 
           const result = await tools.execute(invocation);
           const reply = renderTelegramResponse(result);
+          logger.info("telegram.reply.sending", {
+            integrationId,
+            chatId,
+            telegramUserId,
+            tool: invocation.name
+          });
           await telegram.sendMessage(resolved.context.botToken, chatId, reply);
+          logger.info("telegram.reply.sent", {
+            integrationId,
+            chatId,
+            telegramUserId,
+            tool: invocation.name
+          });
 
           writeJson(response, 200, {
             ok: true,
@@ -129,14 +179,28 @@ export function createOpenClawServer(
         } catch (error) {
           logger.error("telegram.webhook.failed", {
             chatId,
+            telegramUserId,
             updateId: update.update_id,
             error: error instanceof Error ? error.message : String(error)
           });
           try {
+            logger.info("telegram.error_reply.sending", {
+              integrationId,
+              chatId,
+              telegramUserId,
+              updateId: update.update_id
+            });
             await telegram.sendMessage(resolved.context.botToken, chatId, formatUserFacingError(error));
+            logger.info("telegram.error_reply.sent", {
+              integrationId,
+              chatId,
+              telegramUserId,
+              updateId: update.update_id
+            });
           } catch (sendError) {
             logger.error("telegram.error_reply.failed", {
               chatId,
+              telegramUserId,
               updateId: update.update_id,
               error: sendError instanceof Error ? sendError.message : String(sendError)
             });

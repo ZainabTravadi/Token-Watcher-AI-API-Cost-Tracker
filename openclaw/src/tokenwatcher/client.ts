@@ -10,6 +10,10 @@ interface RequestOptions {
   internal?: boolean;
 }
 
+function truncatePreview(value: string, limit = 1000): string {
+  return value.length <= limit ? value : `${value.slice(0, limit - 3)}...`;
+}
+
 export class TokenWatcherClient {
   private readonly config: OpenClawConfig;
   private readonly logger: Logger;
@@ -46,7 +50,7 @@ export class TokenWatcherClient {
     return new TokenWatcherClient({ ...this.config, runtimeApiKey: apiKey }, this.logger);
   }
 
-  async resolveTelegramWebhook(input: { integrationId: string; telegramSecret: string | null; chatId?: number | null }): Promise<{
+  async resolveTelegramWebhook(input: { integrationId: string; telegramSecret: string | null; chatId?: number | null; telegramUserId?: number | null }): Promise<{
     context: {
       integrationId: string;
       workspaceId: string;
@@ -114,13 +118,46 @@ export class TokenWatcherClient {
       init.body = JSON.stringify(options.body);
     }
 
-    const response = await fetch(url, init);
+    this.logger.info("tokenwatcher.http.request", {
+      route,
+      method: init.method,
+      url: url.toString(),
+      internal: Boolean(options.internal),
+      hasApiKey: Boolean(apiKey)
+    });
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`TokenWatcher API ${options.method ?? "GET"} ${route} failed with ${response.status}: ${text}`);
+    try {
+      const response = await fetch(url, init);
+      const responseText = await response.text();
+      this.logger.info("tokenwatcher.http.response", {
+        route,
+        status: response.status,
+        ok: response.ok,
+        body: truncatePreview(responseText)
+      });
+
+      if (!response.ok) {
+        throw new Error(`TokenWatcher API ${options.method ?? "GET"} ${route} failed with ${response.status}: ${responseText}`);
+      }
+
+      try {
+        return JSON.parse(responseText) as T;
+      } catch (error) {
+        this.logger.error("tokenwatcher.http.parse_failed", {
+          route,
+          status: response.status,
+          body: truncatePreview(responseText),
+          error: error instanceof Error ? error.message : String(error)
+        });
+        throw error;
+      }
+    } catch (error) {
+      this.logger.error("tokenwatcher.http.failed", {
+        route,
+        method: init.method,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
     }
-
-    return response.json() as Promise<T>;
   }
 }

@@ -94,6 +94,7 @@ export class TokenWatcherToolRegistry {
 
   private async getAnalyticsOverview(): Promise<ToolExecutionResult> {
     const route = "/api/analytics/overview";
+    this.logger.info("tool.analytics.overview.enter", { route });
     const response = await this.client.getJson<{ data: unknown }>(route);
     return {
       tool: "analytics.overview",

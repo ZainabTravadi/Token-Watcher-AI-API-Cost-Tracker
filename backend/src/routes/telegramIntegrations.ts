@@ -105,8 +105,24 @@ export function createTelegramIntegrationsRouter(): Router {
     try {
       const workspaceId = await requireWorkspace(req, res);
       if (!workspaceId) return;
-      res.status(200).json(await testTelegramIntegration(workspaceId, req.userId!));
+      console.info("[telegram:test:endpoint:start]", {
+        workspaceId,
+        userId: req.userId
+      });
+      const result = await testTelegramIntegration(workspaceId, req.userId!);
+      console.info("[telegram:test:endpoint:ok]", {
+        workspaceId,
+        userId: req.userId,
+        chatId: result.chatId,
+        messageId: result.messageId
+      });
+      res.status(200).json(result);
     } catch (error) {
+      console.warn("[telegram:test:endpoint:error]", {
+        workspaceId: typeof req.body?.workspaceId === "string" ? req.body.workspaceId : null,
+        userId: req.userId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to test Telegram integration" });
     }
   });
@@ -148,6 +164,7 @@ export function createTelegramIntegrationsRouter(): Router {
       const integrationId = typeof req.body?.integrationId === "string" ? req.body.integrationId : "";
       const telegramSecret = typeof req.body?.telegramSecret === "string" ? req.body.telegramSecret : null;
       const rawChatId = req.body?.chatId;
+      const rawTelegramUserId = req.body?.telegramUserId;
       const chatId = typeof rawChatId === "number" && Number.isFinite(rawChatId)
         ? Math.trunc(rawChatId)
         : typeof rawChatId === "string" && rawChatId.trim()
@@ -156,13 +173,38 @@ export function createTelegramIntegrationsRouter(): Router {
               return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
             })()
           : null;
+      const telegramUserId = typeof rawTelegramUserId === "number" && Number.isFinite(rawTelegramUserId)
+        ? Math.trunc(rawTelegramUserId)
+        : typeof rawTelegramUserId === "string" && rawTelegramUserId.trim()
+          ? (() => {
+              const parsed = Number(rawTelegramUserId);
+              return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+            })()
+          : null;
       if (!integrationId) {
         res.status(400).json({ error: "Integration ID required" });
         return;
       }
-      const context = await resolveTelegramWebhook({ integrationId, telegramSecret, chatId });
+      console.info("[telegram:webhook:resolve:start]", {
+        integrationId,
+        chatId,
+        telegramUserId
+      });
+      const context = await resolveTelegramWebhook({ integrationId, telegramSecret, chatId, telegramUserId });
+      console.info("[telegram:webhook:resolve:ok]", {
+        integrationId,
+        workspaceId: context.workspaceId,
+        chatId,
+        telegramUserId
+      });
       res.status(200).json({ context });
     } catch (error) {
+      console.warn("[telegram:webhook:resolve:error]", {
+        integrationId: typeof req.body?.integrationId === "string" ? req.body.integrationId : null,
+        chatId: req.body?.chatId ?? null,
+        telegramUserId: req.body?.telegramUserId ?? null,
+        error: error instanceof Error ? error.message : String(error)
+      });
       res.status(403).json({ error: error instanceof Error ? error.message : "Telegram webhook rejected" });
     }
   });

@@ -1,7 +1,13 @@
 import type { ToolExecutionResult } from "../tokenwatcher/types";
 
 function money(value: number | undefined): string {
-  return typeof value === "number" ? `$${value.toFixed(2)}` : "n/a";
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "n/a";
+  }
+
+  return value < 0.01
+    ? `$${value.toFixed(6)}`
+    : value.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function percent(value: number | undefined): string {

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/router/intentRouter.test.js",
     "start": "node dist/main.js",
     "verify:phase3a": "node scripts/verify-phase3a.mjs",
     "verify:live": "node scripts/verify-live.mjs",
