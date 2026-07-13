@@ -1,74 +1,215 @@
 # SDK
 
-Package: `sdk/`, published as `@zn_/tokenwatch`. It must remain dependency-free and support ESM/CJS builds.
+TokenWatch ships a small TypeScript SDK for sending telemetry to the backend.
+It is dependency-light, workspace-aware, and designed to be safe in short-lived processes.
 
-## Public Surface
+## Table Of Contents
 
-`sdk/src/index.ts` exports:
+- [Install](#install)
+- [Initialize](#initialize)
+- [Configure](#configure)
+- [Track Events](#track-events)
+- [Identity](#identity)
+- [Flush And Shutdown](#flush-and-shutdown)
+- [Supported Events](#supported-events)
+- [Payload Schema](#payload-schema)
+- [Best Practices](#best-practices)
+- [Examples](#examples)
+- [Error Handling](#error-handling)
 
-- `init`
-- `track`
-- `identify`
-- `simulate`
-- `startSimulation`
-- `stopSimulation`
-- `flush`
-- `stats`
-- `TokenWatch`
-- transport stats/helpers
-- public types from `types.ts`
+## Install
 
-## Lifecycle
+```bash
+npm install @zn_/tokenwatch
+```
 
-1. `init(options)` requires `apiKey`.
-2. Repeated `init()` resets transport and runtime state to avoid timers/identity/header leaks.
-3. State lives in `state.ts`.
-4. `track`, `identify`, and `simulate` create records in `generator.ts`.
-5. `transport.ts` enqueues records in bounded queue.
-6. Transport groups requests by API URL, endpoint, workspace ID, and headers.
-7. If workspace ID is missing, transport calls `GET /api/me` with bearer API key and caches returned workspace ID.
-8. Transport signs request headers via `security.ts`.
-9. Transport POSTs to `/api/ingest` by default, retries retryable failures, flushes on shutdown.
+## Initialize
 
-## Key Files
+```ts
+import { TokenWatch } from "@zn_/tokenwatch";
 
-| File | Owns |
+TokenWatch.init({
+  apiUrl: "http://localhost:3001",
+  apiKey: process.env.TOKENWATCH_API_KEY!,
+});
+```
+
+`apiKey` is required.
+`apiUrl` defaults to the hosted backend URL if you do not override it.
+
+## Configure
+
+| Option | Purpose |
 |---|---|
-| `client.ts` | public methods, simulation control, init reset |
-| `transport.ts` | queue, batching, fetch, retry, signing, identity lookup, shutdown |
-| `state.ts` | singleton config/identity/simulation state |
-| `generator.ts` | track/identify/simulated record creation |
-| `security.ts` | HMAC signed ingest headers |
-| `types.ts` | public SDK contracts |
-| `defaults.ts` | API URL/endpoint and simulation model profiles |
-| `internal/queue.ts` | bounded queue |
-| `internal/retryPolicy.ts` | error classification/backoff |
-| `internal/shutdown.ts` | process/browser shutdown hooks |
+| `apiKey` | Required workspace API key |
+| `apiUrl` | Backend base URL |
+| `workspaceId` | Optional pre-resolved workspace ID |
+| `endpoint` | Ingest route override |
+| `headers` | Extra request headers |
+| `maxQueueSize` | Bounded queue limit |
+| `batchSize` | Number of requests per flush batch |
+| `flushInterval` | Time before queued requests are flushed |
+| `retryAttempts` | Delivery retry count |
+| `requestTimeoutMs` | Per-request timeout |
+| `debug` | Verbose transport logging |
 
-## Defaults
+## Track Events
 
-- Endpoint: `/api/ingest`.
-- Queue max: 1000.
-- Batch size: 50.
-- Flush interval: 25 ms.
-- Retry attempts: 3.
-- Timeout: 30000 ms.
+`track()` records a telemetry event and queues it for delivery.
 
-## Protocol Pairings
+```ts
+await TokenWatch.track("llm.request.completed", {
+  route: "/api/chat",
+  provider: "openai",
+  model: "gpt-4o",
+  input_tokens: 120,
+  output_tokens: 80,
+  cost_usd: 0.0042,
+  latency_ms: 640,
+});
+```
 
-| SDK | Backend |
-|---|---|
-| `security.ts createSignedHeaders` | `backend/src/utils/sdkAuth.ts verifySignedSdkRequest` |
-| default `/api/ingest` | `backend/src/routes/ingest.ts` |
-| batch `{ data: [...] }` | `ingestService.validateTelemetryPayload` |
-| bearer API key `/api/me` lookup | `backend/src/routes/me.ts` |
-| telemetry fields in `types.ts` | `backend/src/types/ingest.ts`, `ingestService.ts` |
+## Identity
 
-## SDK Rules
+`identify()` attaches a stable identity to later events.
 
-- Do not add runtime dependencies.
-- Keep queue bounded.
-- Do not retry permanent 4xx errors.
-- Keep shutdown flush best-effort and time-bounded.
-- Preserve ESM/CJS build scripts.
-- Treat `security.ts` as extremely dangerous; backend verifier must stay compatible.
+```ts
+await TokenWatch.identify("user_123", {
+  plan: "pro",
+  team: "platform",
+});
+```
+
+## Flush And Shutdown
+
+Telemetry is batched.
+Call `await TokenWatch.flush()` before a process exits.
+
+```ts
+await TokenWatch.flush();
+```
+
+The transport also registers a shutdown handler so queued telemetry gets a best-effort final flush.
+
+## Supported Events
+
+The SDK does not force one event vocabulary.
+The application chooses event names, and TokenWatch normalizes them into canonical telemetry rows.
+
+Common events:
+
+▪️ `llm.request.completed`
+▪️ `identify`
+▪️ `simulate`
+
+Helper APIs:
+
+▪️ `track(name, options)`
+▪️ `identify(id, traits)`
+▪️ `simulate(options)`
+▪️ `startSimulation(options)`
+▪️ `stopSimulation()`
+▪️ `stats()`
+
+## Payload Schema
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | Event name passed to `track()` |
+| `timestamp` | number | Optional epoch milliseconds |
+| `route` / `endpoint` | string | API route or logical endpoint |
+| `provider` | string | Provider name such as `openai` or `anthropic` |
+| `model` | string | Model identifier |
+| `input_tokens` | number | Prompt token count |
+| `output_tokens` | number | Completion token count |
+| `total_tokens` | number | Optional override; otherwise derived |
+| `cost_usd` | number | Request cost in USD |
+| `latency_ms` | number | Request latency in milliseconds |
+| `error` | string or null | Error label when a request fails |
+| `properties` | object | Extra metadata copied onto the record |
+
+The SDK also adds:
+
+▪️ a generated telemetry id
+▪️ the resolved workspace id
+▪️ identity metadata when available
+
+## Best Practices
+
+▪️ initialize the SDK once during application startup
+▪️ call `flush()` in serverless functions and CLI jobs
+▪️ keep API keys server-side
+▪️ use `properties` for rarely queried metadata
+▪️ prefer `route` and `model` values that are consistent across your application
+▪️ keep request payloads small and predictable
+
+## Examples
+
+### Node.js
+
+```ts
+import { TokenWatch } from "@zn_/tokenwatch";
+
+TokenWatch.init({
+  apiUrl: process.env.TOKENWATCH_API_URL!,
+  apiKey: process.env.TOKENWATCH_API_KEY!,
+});
+```
+
+### Express
+
+```ts
+app.post("/api/chat", async (req, res) => {
+  const started = Date.now();
+  const result = await callModel(req.body);
+
+  await TokenWatch.track("llm.request.completed", {
+    route: "/api/chat",
+    provider: result.provider,
+    model: result.model,
+    input_tokens: result.usage.input,
+    output_tokens: result.usage.output,
+    cost_usd: result.costUsd,
+    latency_ms: Date.now() - started,
+  });
+
+  res.json(result.data);
+});
+```
+
+### Next.js
+
+```ts
+export async function POST(request: Request) {
+  const started = Date.now();
+  const payload = await request.json();
+  const result = await callModel(payload);
+
+  await TokenWatch.track("llm.request.completed", {
+    route: "/api/chat",
+    provider: result.provider,
+    model: result.model,
+    input_tokens: result.usage.input,
+    output_tokens: result.usage.output,
+    cost_usd: result.costUsd,
+    latency_ms: Date.now() - started,
+  });
+
+  await TokenWatch.flush();
+  return Response.json(result.data);
+}
+```
+
+## Error Handling
+
+▪️ Calling `track()` before `init()` logs a warning and ignores the event.
+▪️ The transport retries temporary failures with backoff.
+▪️ 4xx responses are treated as permanent failures.
+▪️ Queue overflow is bounded so memory use stays predictable.
+▪️ `stats()` exposes queue size, retries, rejections, and the last error.
+
+## Related Docs
+
+▪️ [`architecture.md`](architecture.md)
+▪️ [`api.md`](api.md)
+▪️ [`deployment.md`](deployment.md)

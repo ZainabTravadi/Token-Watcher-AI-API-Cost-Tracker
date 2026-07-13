@@ -1,125 +1,105 @@
 # Architecture
 
-TokenWatch has four runtime parts: Express backend, React dashboard, dependency-free SDK, and OpenClaw Telegram bridge. The backend is the source of truth. The frontend and OpenClaw are API clients. The SDK is an ingest client.
+TokenWatch is built around one source of truth: the `requests` table.
+Every dashboard metric, export, forecast, report, and recommendation is derived from that telemetry layer.
+
+## Table Of Contents
+
+- [System Overview](#system-overview)
+- [Component Roles](#component-roles)
+- [Request Lifecycle](#request-lifecycle)
+- [Telemetry Lifecycle](#telemetry-lifecycle)
+- [Analytics Pipeline](#analytics-pipeline)
+- [Recommendation Pipeline](#recommendation-pipeline)
+- [Telegram And OpenClaw Flow](#telegram-and-openclaw-flow)
+- [Security Boundaries](#security-boundaries)
+
+## System Overview
 
 ```mermaid
 flowchart LR
-  SDK[sdk client] -->|POST /api/ingest or /ingest| API[Express API]
-  Browser[React dashboard] -->|cookie auth /api/*| API
-  OpenClaw[Telegram bridge] -->|integration resolver + workspace key| API
-  API --> Auth[middleware/auth.ts]
-  Auth --> Services[backend services]
-  Services --> DB[(PostgreSQL)]
-  Services --> Bus[telemetryBus]
-  Bus --> SSE[telemetry/stream]
-  SSE --> Browser
-  Services --> Email[Resend or simulated email]
-  Services --> Gemini[Gemini insights]
+  App[Developer Application]
+  SDK[TokenWatch SDK]
+  API[Backend API]
+  DB[(PostgreSQL)]
+  Engine[Analytics Engine]
+  Dash[Dashboard]
+  TG[Telegram Integration]
+  OC[OpenClaw Agent]
+  User[User]
+
+  App --> SDK --> API --> DB --> Engine --> Dash --> TG --> OC --> User
 ```
 
-## Layers
+## Component Roles
 
-| Layer | Owns | Does not own |
-|---|---|---|
-| Routes | HTTP paths, parsing, auth middleware, response shape | SQL/business rules |
-| Middleware | identity, permissions, workspace enforcement | analytics/report logic |
-| Services | validation, normalization, SQL orchestration, side effects | Express response objects except SSE |
-| Repository | `requests` SQL, analytics aggregations, exports | users/workspaces/API keys |
-| Frontend API | fetch wrappers, query keys, shared types | page layout |
-| Frontend pages | composition and page-local state | reusable fetch logic |
-| SDK transport | queue, batch, retry, signing, shutdown | analytics meaning |
+| Component | Responsibility |
+|---|---|
+| Developer Application | Emits telemetry from the product code that actually calls AI providers |
+| TokenWatch SDK | Batches events, resolves workspace identity, retries delivery, and flushes on shutdown |
+| Backend API | Authenticates requests, validates telemetry, manages workspaces, and serves analytics |
+| PostgreSQL | Stores users, workspaces, API keys, settings, and canonical telemetry rows |
+| Analytics Engine | Builds metrics, charts, exports, forecasts, reports, and recommendations from `requests` |
+| Dashboard | Displays analytics, request logs, settings, and live updates over SSE |
+| Telegram Integration | Exposes analytics and reports in Telegram for workspace members |
+| OpenClaw Agent | Stateless Telegram bridge that maps chat messages to TokenWatch tools |
+| User | Interacts with the dashboard and Telegram bot |
 
-## Startup
+## Request Lifecycle
 
-Backend:
+1. The application calls `TokenWatch.track(...)` or emits another SDK event.
+2. The SDK resolves workspace identity, queues the payload, and posts it to the ingest API.
+3. The backend validates the API key and normalizes the payload.
+4. The ingest service writes one or more rows into `requests`.
+5. The backend emits a telemetry event and invalidates analytics caches for that workspace.
+6. The dashboard receives live updates through SSE and refreshes visible data.
 
-1. `backend/src/main.ts` calls `startServer()` in `backend/src/core/server.ts`.
-2. `config/env.ts` loads `backend/.env`, validates `DATABASE_URL`, production `JWT_SECRET`, CORS, Resend, signed ingest.
-3. `db/database.ts` applies `schema.ts` and idempotent ALTER updates.
-4. Optional simulator and SDK demo start when enabled.
-5. `core/app.ts` creates Express app, global middleware, security headers, CORS, routes.
-6. `notificationService.startNotificationScheduler()` starts a 60-second loop.
-7. Shutdown stops scheduler, simulators, SDK demo, HTTP server.
+## Telemetry Lifecycle
 
-Frontend:
+▪️ The SDK is the producer.
+▪️ The ingest API is the security boundary.
+▪️ The `requests` table is the canonical store.
+▪️ Analytics and exports read from the same rows rather than a separate shadow table.
+▪️ Workspace filters are enforced everywhere analytics data leaves the backend.
 
-1. `main.tsx` renders `App`.
-2. `App.tsx` installs QueryClient, AuthProvider, StatusProvider, routes.
-3. `AuthContext` restores `/api/auth/me`.
-4. `StatusContext` polls health and owns one SSE connection for the selected workspace.
+## Analytics Pipeline
 
-SDK:
+1. The dashboard or OpenClaw calls an analytics endpoint.
+2. The backend reads the workspace-scoped request rows.
+3. `telemetryRepository.ts` aggregates cost, latency, requests, tokens, provider mix, models, endpoints, and time buckets.
+4. `analyticsService.ts` combines cached and realtime snapshots.
+5. The frontend renders charts, KPIs, tables, and detail drawers.
 
-1. `init()` stores config in `state.ts` and configures `transport.ts`.
-2. `track/identify/simulate` generate records.
-3. Transport queues, batches, resolves workspace with `/api/me` if missing, signs, retries, flushes on shutdown.
+## Recommendation Pipeline
 
-OpenClaw:
+1. The backend computes request patterns and aggregated health signals.
+2. Recommendation services identify optimization opportunities from the same telemetry data.
+3. Copilot and OpenClaw can ask for recommendations, forecasts, anomalies, or reports.
+4. The dashboard shows the same guidance in the UI so users can act on it immediately.
 
-1. `main.ts` loads infrastructure env only.
-2. `server.ts` handles `/telegram/webhook/:integrationId`.
-3. The backend resolver validates the Telegram secret against `telegram_integrations` and returns decrypted credentials for that request only.
-4. `intentRouter.ts` maps text to a tool.
-5. `tokenwatcher/tools.ts` calls TokenWatch API with the workspace OpenClaw key and `telegram/render.ts` formats replies.
+## Telegram And OpenClaw Flow
 
-## Lifecycles
+1. A user sends a message to the Telegram bot.
+2. Telegram delivers the update to OpenClaw.
+3. OpenClaw resolves the Telegram integration through the TokenWatcher backend.
+4. The backend returns the workspace-scoped bot credentials and OpenClaw key for that request.
+5. OpenClaw maps the message to an intent such as Today’s Spend, Top Models, or Recommendations.
+6. OpenClaw calls the matching TokenWatcher endpoint.
+7. The response is rendered into a Telegram-friendly message and sent back to the user.
 
-### Telemetry Ingest
+## Security Boundaries
 
-Files:
+▪️ Dashboard users authenticate with JWT cookies.
+▪️ SDK and OpenClaw calls authenticate with API keys or signed requests.
+▪️ Workspace isolation is enforced on every workspace-scoped route.
+▪️ BotFather tokens are stored only as integration secrets and should never be shared.
+▪️ OpenClaw uses an internal secret when asking the backend to resolve Telegram integrations.
 
-`sdk/src/client.ts` -> `sdk/src/generator.ts` -> `sdk/src/transport.ts` -> `sdk/src/security.ts` -> `backend/src/routes/ingest.ts` or `routes/requests.ts` -> `middleware/auth.ts` -> `ingestService.ts` -> `telemetryRepository.ts` -> `telemetryBus.ts` -> `notificationService.ts`.
+## Related Docs
 
-Flow:
-
-1. Record includes route/endpoint, provider, model, tokens, cost, latency, error, identity/properties.
-2. SDK batches as `{ data: [...] }`.
-3. Backend authenticates API key and optionally signature.
-4. `validateTelemetryPayload()` accepts object, array, `{ data: [] }`, `{ requests: [] }`.
-5. `ingestTelemetry()` normalizes, writes `requests`, emits SSE event, invalidates analytics cache, triggers alert evaluation asynchronously.
-
-Tables: writes `requests`; reads/updates `api_keys`; reads `workspaces`; alert side effects may read/update `workspace_settings`.
-
-### Authentication
-
-Browser auth uses JWT cookie `tokenwatch_auth`, PBKDF2 password hashes, and `users.last_logout_at` invalidation.
-
-API-key auth reads `X-API-Key` or typed bearer token. `verifyApiKey()` checks prefix, hash, revoked/expired state, stored type, permissions, workspace, then updates `last_used_at` at most once per minute.
-
-Workspace access resolves workspace ID from params, query, body, or first workspace and verifies ownership unless API key already supplies workspace identity.
-
-### Dashboard
-
-Protected page -> `AuthContext` current workspace -> `lib/api.ts` query hook -> backend route -> React Query cache. `StatusContext` SSE invalidates `analytics-snapshot`, `telemetry-rows`, `request-log`, and `health`.
-
-### Analytics
-
-`routes/analytics.ts` enforces `analytics:read`; `analyticsService.ts` uses cache; `telemetryRepository.ts` queries `requests` and workspace budget. Ingest/workspace updates invalidate cache.
-
-### Request Log and Export
-
-`routes/requests.ts` parses filters, status, search, date/range, cursor/page, sorting. `telemetryRepository.listRequestLog()` and `listForExport()` own SQL. Exports support CSV/JSON/PDF with cap.
-
-### Notifications
-
-Settings route updates `workspace_settings`. Test email marks `email_verified=true`. Scheduler scans verified enabled settings each minute. Ingest triggers high-cost/error/latency alerts async and throttled. `emailService.ts` uses Resend or simulates outside production.
-
-### Forecast, Reports, AI
-
-Forecast derives from 14-day history buckets plus analytics snapshot. Reports combine analytics, recommendations, anomalies, efficiency, forecast, and Gemini summary/fallback. Copilot stores in-memory conversations, selects backend tools by regex, and uses Gemini grounded in tool outputs or deterministic fallback.
-
-## Connection Graph
-
-| A -> B | Why | Hidden dependency |
-|---|---|---|
-| `server.ts -> database.initialize` | schema before requests | PostgreSQL only |
-| `app.ts -> routes/index.ts` | route mount points | prefixes affect all clients |
-| `routes/* -> middleware/auth.ts` | protected API | workspace ID resolution |
-| `middleware/auth.ts -> authService.verifyApiKey` | API key identity | prefix must match stored type |
-| `sdk/security.ts -> backend/utils/sdkAuth.ts` | signed ingest | update together |
-| `ingestService -> telemetryRepository` | persistence | `requests` shape |
-| `ingestService -> telemetryBus -> realtimeStreamService -> StatusContext` | live dashboard | in-process only |
-| `ingestService -> analyticsCache` | fresh analytics | cache otherwise hides writes |
-| `ingestService -> notificationService` | alerts | async, best-effort |
-| `forecast/report/intelligence/copilot -> analyticsService` | derived intelligence | snapshot windows matter |
-| `OpenClaw server -> integrations resolver -> backend routes` | Telegram bridge | requires encrypted workspace integration credentials |
+▪️ [`backend.md`](backend.md)
+▪️ [`api.md`](api.md)
+▪️ [`sdk.md`](sdk.md)
+▪️ [`frontend.md`](frontend.md)
+▪️ [`openclaw.md`](openclaw.md)
+▪️ [`telegram.md`](telegram.md)

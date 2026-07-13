@@ -1,88 +1,85 @@
-# Frontend
+# Dashboard
 
-Frontend is React 18 + Vite + React Query + Tailwind/shadcn. Main entry is `frontend/src/App.tsx`.
+The frontend is the TokenWatch dashboard.
+It shows workspace telemetry, settings, exports, and live updates over SSE.
 
-## App Tree
+## Table Of Contents
 
-```text
-App
-  QueryClientProvider
-    AuthProvider
-      StatusProvider
-        TooltipProvider
-          Toaster/Sonner
-          RouterProvider
-            ProtectedRoute
-              AppLayout
-                Sidebar
-                GlobalStatusHeader
-                page content
-```
+- [App Routes](#app-routes)
+- [Page Guide](#page-guide)
+- [Metric Source Map](#metric-source-map)
+- [Realtime Behavior](#realtime-behavior)
+- [Settings Panels](#settings-panels)
+- [Related Docs](#related-docs)
 
-## Routes
+## App Routes
 
-| Route | Component | Purpose |
+| Route | Page | Purpose |
 |---|---|---|
-| `/` | `pages/Index.tsx` | public entry |
-| `/login` | `pages/Login.tsx` | login form |
-| `/signup` | `pages/Signup.tsx` | signup form |
-| `/app` | `pages/app/Overview.tsx` | overview dashboard |
-| `/app/endpoints` | `pages/app/Endpoints.tsx` | endpoint analytics |
-| `/app/models` | `pages/app/Models.tsx` | model/provider analytics |
-| `/app/requests` | `pages/app/Requests.tsx` | request log |
-| `/app/settings` | `pages/app/Settings.tsx` | workspace/settings/API keys |
-| `/docs/*` | `pages/docs/DocsPage.tsx` | docs pages |
+| `/` | landing page | public entry point |
+| `/login` | login | sign in |
+| `/signup` | signup | create an account |
+| `/app` | overview | workspace summary |
+| `/app/requests` | requests | request log and exports |
+| `/app/models` | models | model analytics |
+| `/app/endpoints` | endpoints | endpoint analytics |
+| `/app/settings` | settings | workspace and integration settings |
+| `/docs/*` | docs | in-app getting-started docs |
 
-## State Owners
+## Page Guide
 
-| File | Owns |
+| Page | Data Sources | What It Shows |
+|---|---|---|
+| Overview | `/api/analytics/snapshot`, `/api/telemetry`, SSE | spend, throughput, health, budget, top model, top endpoint, recent activity, charts |
+| Requests | `/api/requests`, `/api/analytics/snapshot`, SSE | searchable request log, filters, pagination, exports, row detail drawer |
+| Models | `/api/analytics/snapshot`, `/api/telemetry` | model spend, token usage, latency, error rate, provider comparison, recommendations |
+| Endpoints | `/api/analytics/snapshot`, `/api/telemetry` | endpoint spend, request counts, latency, error rate, recommendations |
+| Settings | workspace APIs, Telegram APIs, usage APIs | API keys, Telegram integration, workspace metadata, alerts, email, webhook, usage, security |
+
+## Metric Source Map
+
+Every dashboard metric is derived from a backend source, not from local UI state.
+
+| Metric family | Source |
 |---|---|
-| `contexts/AuthContext.tsx` | user, workspaces, current workspace, session, auth loading/error, login/signup/logout/refresh |
-| `contexts/StatusContext.tsx` | health, stream status, last telemetry event time, single EventSource |
-| `lib/api.ts` | API base URL, auth fetch, auth invalidation, stream status external store, query hooks |
-| `pages/app/Requests.tsx` | request filters, sorting, pagination/cursor, selected row |
-| `pages/app/Settings.tsx` | settings form orchestration |
-| `hooks/useOverviewFilters.ts` | overview/date/entity/status filters over telemetry rows |
+| Spend, request count, tokens, latency, error rate | `requests` table via `telemetryRepository.ts` |
+| Overview charts | analytics snapshot and telemetry rows |
+| Recent activity | latest request rows |
+| Top models | aggregated `requests` rows grouped by model and provider |
+| Top endpoints | aggregated `requests` rows grouped by route |
+| Budget remaining | workspace monthly budget minus derived spend |
+| API key metadata | `workspaces`, `api_keys`, and `authService.ts` |
+| Telegram status | `telegram_integrations` and Telegram API calls |
+| Health banner | `/api/health` and `StatusContext` SSE state |
+| Forecasts and recommendations | analytics pipeline derived from telemetry |
 
-## API Client
+## Realtime Behavior
 
-`frontend/src/lib/api.ts` owns:
+▪️ `StatusContext` owns the single dashboard `EventSource`
+▪️ the dashboard subscribes to `/api/telemetry/stream`
+▪️ new telemetry invalidates analytics, request logs, and health queries
+▪️ the request log can be paused without closing the workspace stream
 
-- `API_BASE_URL`
-- `authFetch`
-- `fetchHealth`
-- `fetchAnalyticsSnapshot`
-- `fetchTelemetryRows`
-- `fetchRequestLog`
-- `fetchAiInsights`
-- `useHealthQuery`
-- `useAnalyticsSnapshotQuery`
-- `useTelemetryRowsQuery`
-- `useRequestLogQuery`
+## Settings Panels
 
-Settings-specific calls live in `frontend/src/pages/app/settings/api.ts`.
+The settings page is organized around the following panels:
 
-## Component Ownership
+▪️ API Keys
+▪️ Telegram
+▪️ Workspace name
+▪️ Budget
+▪️ Email Notifications
+▪️ Alerts
+▪️ Webhook
+▪️ Usage information
+▪️ Security
+▪️ Danger zone
 
-| Component/folder | Purpose |
-|---|---|
-| `AppLayout.tsx` | app shell |
-| `Sidebar.tsx` | app/docs nav |
-| `GlobalStatusHeader.tsx` | health/SSE badges |
-| `ProtectedRoute.tsx` | auth gate |
-| `DataTable.tsx` | generic table |
-| `RequestDetailDrawer.tsx` | selected request details |
-| `BudgetAlertCard.tsx` | budget alert visual and pure derivation helper |
-| `SdkOnboarding.tsx` | SDK setup snippets |
-| `components/overview/*` | overview charts, KPIs, filters, export |
-| `components/analytics/*` | entity charts, health, recommendations |
-| `components/ui/*` | shadcn/Radix primitives; avoid for domain logic |
+The Telegram panel is described in [`telegram.md`](telegram.md).
 
-## Frontend Rules
+## Related Docs
 
-- Do not create duplicate `EventSource`; `StatusContext` owns SSE.
-- Keep reusable API calls in `lib/api.ts`; keep settings-only calls in `settings/api.ts`.
-- Preserve current workspace localStorage key `tokenwatch.currentWorkspaceId`.
-- Keep chart components prop-driven.
-- Use existing shadcn primitives and local visual style.
-- For API contract changes, update frontend types and backend route/service together.
+▪️ [`architecture.md`](architecture.md)
+▪️ [`api.md`](api.md)
+▪️ [`operations.md`](operations.md)
+▪️ [`project-structure.md`](project-structure.md)

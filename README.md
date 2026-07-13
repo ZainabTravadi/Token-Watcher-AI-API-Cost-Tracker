@@ -1,310 +1,233 @@
 # TokenWatch
 
-Lightweight AI telemetry, analytics, and cost monitoring for production systems.
+TokenWatch is a production telemetry, analytics, and Telegram delivery platform for AI applications.
+It instruments your application directly, stores request telemetry in PostgreSQL, and turns raw usage data into dashboards, forecasts, reports, and Telegram replies.
 
-<!-- Badges -->
-[![GitHub issues](https://img.shields.io/github/issues/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/issues)
-[![CI](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/actions)
-[![npm version](https://img.shields.io/npm/v/@zn_/tokenwatch)](https://www.npmjs.com/package/@zn_/tokenwatch)
+## What problem it solves
 
----
+Many AI products know their model invoices before they know their product behavior.
+TokenWatch closes that gap by showing:
 
-## Feature highlights
+▪️ what each request costs
+▪️ which models and endpoints are driving spend
+▪️ how latency and errors change over time
+▪️ what should be optimized next
+▪️ how to surface the same data in Telegram
 
-- 🤖 AI: Integrates with model usage to capture requests, tokens, and costs.
-- 📊 Analytics: Workspace-level dashboards, recent activity, and endpoints.
-- 💰 Cost Monitoring: Per-model and per-request cost tracking and summaries.
-- ⚡ Realtime Telemetry: SSE streaming for live dashboard updates.
-- 🔑 API Keys: Workspace-scoped API keys with rotation guidance.
-- 🛰️ Monitoring: Health checks, backups, and retention tooling.
-- 🚀 Deployment: Deployment guides and Procfile for hosted deployments.
-- 📦 SDK: Lightweight TypeScript SDK for easy instrumentation.
-- 🏢 Workspaces: Isolated analytics per workspace for multi-tenant use.
+## Solution
 
----
+TokenWatch keeps the instrumentation simple:
 
-## Technology stack
+▪️ the SDK captures telemetry at the source
+▪️ the backend authenticates, normalizes, and stores `requests`
+▪️ the analytics engine derives dashboards, forecasts, reports, and recommendations from the same table
+▪️ the dashboard and Telegram bot read the same workspace-scoped data
+▪️ OpenClaw bridges Telegram traffic back to TokenWatch safely
 
-- TypeScript (backend, SDK, frontend)
-- Node.js / npm
-- Express (backend)
-- React + Vite (frontend)
-- PostgreSQL (Neon-compatible)
-- Server-Sent Events (SSE) for realtime streaming
-- Vitest for tests
-- Heroku and Vercel deployment workflows
+## Key Features
 
----
+▪️ workspace-isolated telemetry and analytics
+▪️ bounded SDK queueing, batching, retries, and shutdown flush
+▪️ live dashboard updates over SSE
+▪️ request log search, filters, and exports
+▪️ forecasts, reports, recommendations, anomalies, and Copilot tools
+▪️ Telegram bot integration through BotFather and OpenClaw
+▪️ production-ready auth, API keys, and secret handling
 
-## Table of Contents
+## Screenshots
 
-- [What is TokenWatch?](#what-is-tokenwatch)
-- [How TokenWatch Works](#how-tokenwatch-works)
-- [Feature highlights](#feature-highlights)
-- [Quick Start](#5-minute-quick-start)
-- [Installation](#installation)
-- [API Key Lifecycle](#api-key-lifecycle)
-- [Troubleshooting](#troubleshooting)
-- [Deployment](#deployment)
-- [Operations & maintenance (short)](#operations--maintenance-short)
-- [Important directories](#-important-directories)
-- [Next reading](#-next-reading)
-- [Architecture](#architecture)
-- [Getting help / community](#getting-help--community)
-- [Contributing](#contributing)
-- [Contributors](#-contributors)
+Add screenshots under `docs/images/` and reference them here.
 
----
+◻️ Dashboard overview
+◻️ Requests page
+◻️ Settings -> Telegram Integration
+◻️ Telegram bot response in chat
 
-## What is TokenWatch?
-
-TokenWatch is a lightweight AI telemetry and cost monitoring platform.
-It helps teams track token usage, model costs, latency, failures, and endpoint activity through a lightweight SDK and dashboard.
-
-## Why TokenWatch?
-
-Many tools require proxying AI traffic through a third-party service.
-TokenWatch takes a different approach: instrument your application directly, keep provider integrations unchanged, retain control of request flow, and monitor usage through telemetry.
-
-### TokenWatch vs Proxy-Based Monitoring
-
-- TokenWatch instruments your app directly instead of forcing traffic through a proxy.
-- Your provider SDKs stay unchanged, so you keep the integration patterns you already use.
-- You keep control of request flow while still collecting telemetry for analytics and cost monitoring.
-
-## How TokenWatch Works
-
-- Backend: ingest API, analytics, authentication, and storage.
-- Dashboard: workspaces, analytics, and realtime monitoring.
-- SDK: telemetry collection, batching, and delivery.
-
-This repository contains three main parts:
-- `backend/` — TypeScript Express API, authentication, ingest pipeline, analytics, and SSE streaming backed by PostgreSQL (Neon-compatible).
-- `frontend/` — React + Vite dashboard for workspace-level analytics, request logs and realtime updates.
-- `sdk/` — Small, dependency‑free TypeScript SDK that batches and delivers telemetry to the ingest API.
-
- 
-## Architecture
-
-A compact architecture diagram showing the main data flows. See the full [Architecture Guide](./ARCHITECTURE.md) for details.
+## Architecture Overview
 
 ```mermaid
 flowchart LR
+  App[Developer Application]
+  SDK[TokenWatch SDK]
+  API[Backend API]
+  DB[(PostgreSQL)]
+  Engine[Analytics Engine]
+  Dash[Dashboard]
+  TG[Telegram Integration]
+  OC[OpenClaw Agent]
+  User[User]
 
-    subgraph Application
-        SDK["TokenWatch SDK"]
-    end
-
-    Backend["Backend API"]
-	DB[(PostgreSQL)]
-    Frontend["Dashboard"]
-
-    SDK -->|POST /api/ingest| Backend
-    Backend --> DB
-    Backend -->|SSE /api/telemetry/stream| Frontend
-    Frontend -->|API calls| Backend
+  App --> SDK --> API --> DB --> Engine --> Dash --> TG --> OC --> User
 ```
 
-The README below is a concise developer guide: quick start, core concepts, and where to look for implementation details.
+The detailed system guide lives in [`docs/architecture.md`](docs/architecture.md).
 
-## Workspace Lifecycle
+## Technology Stack
 
-- Signing up creates a default workspace automatically.
-- Telemetry is isolated per workspace.
-- Switching workspaces changes the analytics context in the dashboard.
-- Deleting or changing workspaces affects what you can see in analytics and recent activity.
+| Layer | Stack |
+|---|---|
+| Backend | Node.js, Express, TypeScript, PostgreSQL |
+| Frontend | React 18, Vite, React Query, Tailwind, shadcn/ui |
+| SDK | TypeScript, fetch-based transport, bounded queue, retries |
+| Telegram bridge | OpenClaw, Telegram Bot API |
+| Realtime | Server-Sent Events |
 
-## API Key Lifecycle
+## Folder Structure
 
-- API keys are workspace-scoped.
-- API keys authenticate telemetry ingestion.
-- Rotating a key invalidates the previous key.
-- SDK deployments must be updated after rotation.
-
-> **Warning:** If you rotate an API key, update every deployed SDK instance that uses it before the old key is removed from service.
+| Folder | Responsibility |
+|---|---|
+| `backend/` | API, auth, ingest, analytics, storage, notifications |
+| `frontend/` | Dashboard, settings, docs pages, charts, and SSE client |
+| `sdk/` | Public telemetry SDK published to npm |
+| `openclaw/` | Stateless Telegram bridge and intent router |
+| `docs/` | Canonical product, platform, and contributor documentation |
+| `backend/src/db/` | Database schema and startup schema application |
 
 ## Installation
 
-```bash
-npm install @zn_/tokenwatch
-```
-
-## Need credentials?
-- API Key
-	- Dashboard → Settings → API Keys
-- apiUrl
-	- Local: [http://localhost:3001](http://localhost:3001)
-	- Hosted: your deployed backend URL
-
-## 5-Minute Quick Start
-
-1. Install the package.
+Install the workspace packages you need:
 
 ```bash
-npm install @zn_/tokenwatch
+cd backend
+npm install
+
+cd ../frontend
+npm install
+
+cd ../sdk
+npm install
+
+cd ../openclaw
+npm install
 ```
 
-2. Initialize the SDK.
+## Environment Variables
 
-```js
+The full environment matrix is documented in [`docs/deployment.md`](docs/deployment.md). The most important variables are:
+
+| Component | Variables |
+|---|---|
+| Backend | `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `TOKENWATCHER_SECRET_ENCRYPTION_KEY`, `OPENCLAW_INTERNAL_SECRET`, `OPENCLAW_PUBLIC_URL`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL` |
+| Frontend | `VITE_TOKENWATCH_API_URL` |
+| OpenClaw | `TOKENWATCHER_API_URL`, `OPENCLAW_INTERNAL_SECRET`, `OPENCLAW_PORT`, `OPENCLAW_HOST`, `TOKENWATCHER_TIMEOUT_MS`, `TOKENWATCHER_USER_AGENT` |
+
+## Running Locally
+
+```bash
+# Backend
+cd backend
+npm run dev
+
+# Frontend
+cd frontend
+npm run dev
+
+# OpenClaw
+cd openclaw
+npm run build
+npm start
+```
+
+The backend listens on `http://localhost:3001` by default.
+The frontend runs on Vite's dev server.
+OpenClaw listens on `http://localhost:3300` by default.
+
+## Running with Docker
+
+No official Docker workflow is committed yet.
+Use the local commands above or add Docker assets if your deployment strategy needs them.
+
+## SDK Usage
+
+```ts
 import { TokenWatch } from "@zn_/tokenwatch";
 
 TokenWatch.init({
-	apiUrl: "http://localhost:3001",
-	apiKey: process.env.TOKENWATCH_API_KEY
+  apiUrl: "http://localhost:3001",
+  apiKey: process.env.TOKENWATCH_API_KEY!,
 });
-```
 
-3. Send telemetry.
+await TokenWatch.track("llm.request.completed", {
+  route: "/api/chat",
+  provider: "openai",
+  model: "gpt-4o",
+  input_tokens: 120,
+  output_tokens: 80,
+  cost_usd: 0.0042,
+  latency_ms: 640,
+});
 
-```js
-await TokenWatch.track(
-	"llm.request.completed",
-	{
-		route: "/api/chat",
-		provider: "openai",
-		model: "gpt-4o",
-		input_tokens: 120,
-		output_tokens: 80,
-		cost_usd: 0.0042,
-		latency_ms: 640
-	}
-);
-```
-
-4. Flush before exit.
-
-```js
 await TokenWatch.flush();
 ```
 
-5. Verify in dashboard.
+The full SDK guide is in [`docs/sdk.md`](docs/sdk.md).
 
-Look in **Overview**, **Recent Activity**, **Endpoints**, and **Models** after the first event lands.
+## Telemetry Flow
 
-### Expected Result
+1. The developer application emits telemetry through the SDK.
+2. The SDK batches and sends the payload to the backend ingest API.
+3. The backend authenticates the workspace and stores telemetry in `requests`.
+4. Analytics, forecasts, reports, and recommendations are derived from the same source table.
+5. The dashboard refreshes through SSE and workspace-scoped queries.
+6. Telegram and OpenClaw read the same workspace data to answer user requests.
 
-- ✓ Overview page updates
-- ✓ Recent Activity shows a new row
-- ✓ Endpoint appears in analytics
-- ✓ Stream status shows connected
+See [`docs/architecture.md`](docs/architecture.md) for the full lifecycle.
 
-## Why flush() matters
+## Dashboard Overview
 
-> **Warning:** Telemetry is batched. Short-lived scripts and serverless functions may exit before queued events are delivered.
+The dashboard is documented in [`docs/frontend.md`](docs/frontend.md). The main screens are:
 
-Always call:
+▪️ Overview
+▪️ Requests
+▪️ Models
+▪️ Endpoints
+▪️ Settings
 
-```js
-await TokenWatch.flush();
-```
+Each screen is backed by the same telemetry source of truth.
 
-before shutdown.
+## Telegram Integration
 
-## Troubleshooting
+Telegram setup lives in [`docs/telegram.md`](docs/telegram.md).
+In short:
 
-- No data appearing?
-	1. Is backend running?
-	2. Is `apiUrl` correct?
-	3. Is the API key active and unexpired?
-	4. Is API key valid?
-	5. Did you call `flush()`?
-	6. Are filters cleared?
+▪️ create a bot in BotFather
+▪️ paste the token into `Settings -> Telegram Integration`
+▪️ connect the bot
+▪️ send the bot one message
+▪️ use Test to confirm delivery
 
-- If events appear in the API but not the dashboard, verify the workspace selection in the sidebar and refresh the page.
-- If the realtime stream disconnects, SSE reconnects automatically; localhost restarts can temporarily disconnect the stream.
+## OpenClaw Integration
+
+OpenClaw is the stateless Telegram bridge used by TokenWatch.
+Read the guide in [`docs/openclaw.md`](docs/openclaw.md) for the webhook flow, intent routing, and tool execution model.
 
 ## Deployment
 
-See [Deployment Guide](./DEPLOYMENT.md) for local development commands, hosted deployment checklists, backups, and retention guidance.
+Deployment guidance is in [`docs/deployment.md`](docs/deployment.md).
+It covers:
 
-### OpenClaw Deployment
+▪️ frontend deployment
+▪️ backend deployment
+▪️ OpenClaw deployment
+▪️ database setup
+▪️ production checklist
 
-OpenClaw is stateless. Customers connect their own Telegram bot from Dashboard > Settings > Telegram; TokenWatcher stores bot tokens and OpenClaw keys encrypted per workspace.
+## Roadmap
 
-Required environment:
+▪️ more Telegram commands and richer conversational shortcuts
+▪️ broader report export formats
+▪️ deeper forecasting and recommendation surfaces
+▪️ multi-instance realtime hardening
+▪️ improved deployment automation and container support
 
-```bash
-TOKENWATCHER_API_URL=https://your-tokenwatcher-backend.example
-OPENCLAW_INTERNAL_SECRET=shared-platform-secret
-```
+## Contributing
 
-Do not deploy OpenClaw with customer bot tokens or customer workspace API keys.
+Please read [`docs/contributing.md`](docs/contributing.md) before opening a pull request.
 
-### Frontend Deployment
+## License
 
-The frontend should point at the backend API URL. The backend stores telemetry in PostgreSQL and exposes the ingest API for dashboard and SDK traffic.
+MIT. The SDK package declares MIT in `sdk/package.json`.
 
-- Local frontend example: use `http://localhost:3001` for the backend.
-- Production frontend example: use your deployed backend URL.
-- SSE endpoint requirement: `/api/telemetry/stream` must remain reachable for realtime dashboard updates.
-- Reverse proxy consideration: avoid buffering SSE responses and preserve long-lived connections.
+## Acknowledgements
 
- ## What the system does (short)
-
- - SDK queues events in memory, batches them, and POSTs to `POST /api/ingest` with `X-API-Key`.
- - Backend authenticates the key, normalizes telemetry, writes the `requests` table in PostgreSQL, emits an event on `telemetryBus`, and invalidates analytics caches.
- - Frontend subscribes to `/api/telemetry/stream` (SSE) for workspace-scoped live rows and refreshes analytics views.
-
- ## Core features
-
- - Workspace isolation (API keys).
- - SDK batching, retries, and graceful shutdown (`flush()`).
- - Realtime SSE updates and cache invalidation for low-latency dashboards.
- - Opt-in retention and backup scripts for operational maintenance.
-
-## 📁 Important directories
-
-- [`backend/src/routes`](./backend/src/routes) — API routes and ingestion endpoints.
-- [`backend/src/services`](./backend/src/services) — analytics, realtime streaming, ingestion, and workspace logic.
-- [`backend/src/db`](./backend/src/db) — PostgreSQL schema, connection, and migrations.
-- [`sdk/src`](./sdk/src) — SDK client, transport, batching, and runtime state.
-- [`frontend/src/pages`](./frontend/src/pages) — dashboard pages and analytics views.
-- [`frontend/src/components`](./frontend/src/components) — reusable UI and realtime dashboard components.
-
- ## Operations & maintenance (short)
-
- - Health endpoint: `GET /api/health` — returns database connection status and operational counters (active SSE connections, simulators).
- - Backups: `node dist/scripts/backup.js` uses `pg_dump` and saves SQL dumps to `backend/data/backups`.
- - Retention: `dist/scripts/retention.js` is dry-run by default. Use `TELEMETRY_RETENTION_APPLY=true` to delete.
-
-## 📚 Next reading
-
-- 🏗️ [Architecture Guide](./ARCHITECTURE.md) — runtime flow, ingest pipeline, SSE, and scaling tradeoffs.
-- 🚀 [Deployment Guide](./DEPLOYMENT.md) — production setup, environment variables, backups, and retention.
-- 🛠️ [Operations Guide](./OPS.md) — monitoring, maintenance, health checks, and operational workflows.
-- 📦 [SDK Documentation](./sdk/README.md) — installation, examples, batching, retries, and production usage.
-
-## Getting help / community
-
-- Report bugs or request features: [Issues](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/issues)
-- Ask questions and discuss usage: [Discussions](https://github.com/ZainabTravadi/Token-Watcher-AI-API-Cost-Tracker/discussions)
-
-> **Note:** When opening an issue, include reproduction steps and relevant logs to help triage quickly.
-
- ## Contributing
-
- - Use `NODE_ENV=production` and a strong `JWT_SECRET` for non-local deployments.
- - Keep workspace API keys secret and server-side; do not embed them in browser shipping code.
-
-## 🤝 Contributors
-
-Big thanks to everyone helping make **TokenWatch** better 🚀
-
-<div align="center">
-
-<a href="https://github.com/EvolutionX-10" title="@EvolutionX-10">
-  <img src="https://images.weserv.nl/?url=avatars.githubusercontent.com/EvolutionX-10&h=80&w=80&fit=cover&mask=circle" />
-</a>
-
-<br>
-
-<a href="https://github.com/EvolutionX-10">
-  <b>EvolutionX-10</b>
-</a>
-
-</div>
-
-Every contribution - whether code, documentation, testing, or feedback—is greatly appreciated ❤️
-
-
+Built with the work of the TokenWatch maintainers and the open-source ecosystem behind Express, React, Vite, PostgreSQL, and Telegram Bot APIs.

@@ -1,84 +1,74 @@
 # Backend
 
-Backend is Express 5 + PostgreSQL. Bootstrap is `backend/src/main.ts` -> `backend/src/core/server.ts` -> `backend/src/core/app.ts` -> `backend/src/routes/index.ts`.
+The backend is the source of truth for auth, workspace enforcement, telemetry ingest, analytics, reports, forecasts, and Telegram integration resolution.
+
+## Table Of Contents
+
+- [Route Ownership](#route-ownership)
+- [Service Ownership](#service-ownership)
+- [Auth Model](#auth-model)
+- [Operational Rules](#operational-rules)
+- [Related Docs](#related-docs)
 
 ## Route Ownership
 
 | Route file | Owns |
 |---|---|
-| `routes/auth.ts` | signup, login, logout, browser `/api/auth/me` |
-| `routes/me.ts` | unified identity for cookie or API key, used by SDK/OpenClaw |
-| `routes/workspaces.ts` | workspace CRUD, settings, notifications, webhook tests, API keys |
-| `routes/ingest.ts` | `/api/ingest` and `/ingest`, ingest rate limit |
-| `routes/requests.ts` | request log, exports, SDK ingest alias `/api/requests` |
-| `routes/telemetry.ts` | latest telemetry, SSE, telemetry PDF export, simulator status |
-| `routes/analytics.ts` | overview/endpoints/models/recent/timeline/snapshot |
-| `routes/ai.ts` | basic AI insights |
-| `routes/intelligence.ts` | recommendations, efficiency, anomalies, root cause |
-| `routes/reports.ts` | report endpoints and report export |
+| `routes/auth.ts` | signup, login, logout, and authenticated dashboard identity |
+| `routes/me.ts` | identity resolution for cookie or API-key clients |
+| `routes/workspaces.ts` | workspace CRUD, settings, notifications, API keys, webhook tests |
+| `routes/ingest.ts` | telemetry ingest and ingest aliases |
+| `routes/requests.ts` | request log and exports |
+| `routes/telemetry.ts` | latest telemetry, SSE stream, PDF export, simulator status |
+| `routes/analytics.ts` | overview, endpoints, models, recent, timeline, snapshot |
+| `routes/ai.ts` | AI insights summary |
+| `routes/intelligence.ts` | recommendations, efficiency score, anomalies, root cause |
+| `routes/reports.ts` | reports and report export |
 | `routes/forecast.ts` | forecast endpoints |
-| `routes/copilot.ts` | copilot chat/stream/report/explain/forecast |
+| `routes/copilot.ts` | Copilot chat, stream, report, explain, forecast |
+| `routes/telegramIntegrations.ts` | Telegram verify, connect, test, status, webhook, disconnect |
 | `routes/health.ts` | health diagnostics |
 
 ## Service Ownership
 
-| Service | Owns | Risk |
-|---|---|---|
-| `authService.ts` | users, workspaces, API keys, workspace settings persistence | very high |
-| `ingestService.ts` | ingest validation/normalization, cache invalidation, bus emit, alert trigger | high |
-| `telemetryRepository.ts` | all `requests` SQL, analytics, request log, exports, dimensions | very high |
-| `analyticsService.ts`, `analyticsCache.ts` | cached snapshot facade | medium |
-| `realtimeStreamService.ts`, `telemetryBus.ts` | SSE lifecycle and in-process events | high |
-| `forecastService.ts` | forecast math/cache | high |
-| `reportService.ts` | reports and export formats | high |
-| `copilotService.ts` | copilot memory, tool selection, prompts, fallback | high |
-| `aiInsightsService.ts`, `geminiService.ts` | Gemini integration and summary | medium-high |
-| `recommendationService.ts`, `anomalyService.ts`, `efficiencyScoreService.ts`, `rootCauseService.ts` | intelligence services | medium-high |
-| `notificationService.ts` | alerts, digests, scheduler | high |
-| `emailService.ts`, `emailTemplates.ts` | Resend transport and HTML emails | medium |
-| `simulatorService.ts`, `workspaceSimulatorManager.ts`, `telemetryGenerator.ts` | demo telemetry | low-medium |
-
-## Auth Rules
-
-- Browser users authenticate with JWT cookies.
-- SDK/integrations authenticate with API keys.
-- API key types: `SDK`, `OPENCLAW`, `CI`, `READONLY`, `ADMIN`, `SERVICE`.
-- Permissions include `telemetry:ingest`, `workspace:read`, `analytics:read`, `requests:read`, `reports:read`, `recommendations:read`, `forecast:read`, `copilot:use`, `admin:all`.
-- Workspace isolation is mandatory. Every workspace-scoped SQL query must filter by `workspace_id`.
-- Never return plaintext API keys except immediately after create/regenerate/signup.
-
-## Middleware
-
-| Function | Purpose |
+| Service | Owns |
 |---|---|
-| `authenticateUser` | JWT cookie auth for human dashboard |
-| `authenticateSDK` | API key auth for ingest, requires `telemetry:ingest` and optional signature |
-| `requireApiKeyPermission(permission)` | API-key-only permission gate |
-| `authenticateWorkspaceAccess(permission)` | cookie or API key access to workspace route |
-| `authenticateIdentity` | `/api/me` identity via cookie or API key |
-| `requireOwnedWorkspace` | verifies user owns workspace resolved from params/query/body/default |
+| `authService.ts` | users, workspaces, API keys, settings persistence |
+| `ingestService.ts` | payload validation, normalization, cache invalidation, SSE emission, alert trigger |
+| `telemetryRepository.ts` | all `requests` SQL, analytics aggregation, request filters, dimensions, exports |
+| `analyticsService.ts` | analytics snapshot assembly |
+| `analyticsCache.ts` | cached analytics lifecycle |
+| `realtimeStreamService.ts` | SSE connections |
+| `telemetryBus.ts` | in-process telemetry fanout |
+| `reportService.ts` | reports and export formats |
+| `forecastService.ts` | spend and request forecasting |
+| `recommendationService.ts` | optimization recommendations |
+| `anomalyService.ts` | anomaly detection |
+| `rootCauseService.ts` | anomaly explanation |
+| `copilotService.ts` | Copilot prompts, routing, and responses |
+| `notificationService.ts` | alerts, digests, reports, scheduler |
+| `telegramIntegrationService.ts` | Telegram integration lifecycle |
 
-## Notifications
+## Auth Model
 
-`notificationService.ts` has three entry types:
+▪️ dashboard users authenticate with JWT cookies
+▪️ SDK calls authenticate with workspace API keys
+▪️ workspace-scoped routes enforce ownership or permission checks
+▪️ Telegram integration resolution uses a separate internal secret
+▪️ signed ingest can be enabled for stronger backend protection
 
-- Manual: test email, daily digest, weekly report from `routes/workspaces.ts`.
-- Scheduled: `startNotificationScheduler()` every 60 seconds, due by workspace local time fields.
-- Ingest-triggered: `evaluateWorkspaceAlerts(workspaceId)` from `ingestService`, async and throttled.
+## Operational Rules
 
-Email transport is `emailService.ts`; HTML is `emailTemplates.ts`; weekly report attachment uses `reportService.exportReport()`.
+▪️ keep ingest fast
+▪️ do not wait on email, reports, or AI work inside the ingest path
+▪️ keep all workspace-scoped queries filtered by `workspace_id`
+▪️ never return plaintext API keys except at create or rotate time
+▪️ keep analytics derived from `requests`
+▪️ keep SSE ownership centralized in the status layer
 
-## AI System
+## Related Docs
 
-- `geminiService.ts` is the provider gateway.
-- `reportService.ts`, `rootCauseService.ts`, and `copilotService.ts` must have deterministic fallback behavior.
-- Copilot tools call backend services directly: analytics, recommendations, forecast, efficiency, anomalies, root cause, reports, request search, models, endpoints.
-- Copilot conversation state is in memory only.
-
-## Backend Performance Rules
-
-- Keep ingest fast; never await report/AI/email work inside ingest.
-- Use repository indexes and workspace filters.
-- Avoid unbounded `requests` queries.
-- Keep analytics cache invalidation explicit after ingest and workspace changes.
-- Notification scheduler should avoid overlapping runs; it already uses `schedulerRunInProgress`.
+▪️ [`architecture.md`](architecture.md)
+▪️ [`api.md`](api.md)
+▪️ [`database.md`](database.md)
+▪️ [`security.md`](security.md)

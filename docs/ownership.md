@@ -1,58 +1,51 @@
 # Ownership
 
-Use this doc when deciding what to inspect or edit.
+Use this file when deciding what to inspect, edit, or avoid.
 
-## Folder Ownership Score
+## Table Of Contents
 
-| Folder/File | Safety | Safe score | Notes |
-|---|---|---:|---|
-| `frontend/src/components/ui` | safe | 95% | UI primitives only. |
-| `frontend/src/components` | safe | 85% | Mostly presentational. |
-| `frontend/src/pages` | safe | 80% | Page-local behavior. |
-| `backend/src/routes` | safe | 80% | Thin HTTP layer. |
-| `openclaw/src/router` | safe | 80% | Intent routing only. |
-| `frontend/src/lib/api.ts` | medium | 55% | API/query key ripple. |
-| `backend/src/services` | medium | 55% | Business logic. |
-| `openclaw/src/tokenwatcher` | medium | 55% | API bridge contracts. |
-| `frontend/src/contexts` | cautious | 35% | App-wide state. |
-| `telemetryRepository.ts` | dangerous | 20% | SQL/performance hub. |
-| `authService.ts` | dangerous | 15% | users/workspaces/API keys. |
-| `sdk/src/transport.ts` | dangerous | 15% | all SDK delivery. |
-| `backend/src/middleware/auth.ts` | very dangerous | 10% | security boundary. |
-| `backend/src/db` | very dangerous | 10% | data/startup-wide. |
-| `sdk/src/security.ts` | extremely dangerous | 5% | signing protocol. |
+- [Risk Levels](#risk-levels)
+- [High-Ripple Files](#high-ripple-files)
+- [Invariants](#invariants)
 
-## File Cost Ranking
+## Risk Levels
 
-Cheap: presentational UI, docs pages, small formatting helpers.
+| Folder or file | Risk | Notes |
+|---|---|---|
+| `frontend/src/components/ui` | safe | UI primitives |
+| `frontend/src/components` | safe | mostly presentational |
+| `frontend/src/pages` | safe | page-local behavior |
+| `backend/src/routes` | safe | thin HTTP layer |
+| `openclaw/src/router` | safe | intent routing only |
+| `frontend/src/lib/api.ts` | medium | query and contract ripple |
+| `backend/src/services` | medium | business logic |
+| `openclaw/src/tokenwatcher` | medium | API bridge contracts |
+| `frontend/src/contexts` | cautious | app-wide state |
+| `backend/src/services/telemetryRepository.ts` | dangerous | telemetry SQL and analytics hotspot |
+| `backend/src/services/authService.ts` | dangerous | users, workspaces, API keys |
+| `backend/src/middleware/auth.ts` | very dangerous | security boundary |
+| `backend/src/db` | very dangerous | schema and startup-wide impact |
+| `sdk/src/transport.ts` | dangerous | delivery semantics |
+| `sdk/src/security.ts` | extremely dangerous | signed ingest protocol |
 
-Medium: app pages, route files, settings sections, OpenClaw intent/router rendering.
+## High-Ripple Files
 
-Expensive: `telemetryRepository.ts`, `authService.ts`, `notificationService.ts`, `forecastService.ts`, `reportService.ts`, `sdk/src/transport.ts`, `frontend/src/lib/api.ts`.
+▪️ `backend/src/db/schema.ts`
+▪️ `backend/src/db/database.ts`
+▪️ `backend/src/services/authService.ts`
+▪️ `backend/src/middleware/auth.ts`
+▪️ `backend/src/services/telemetryRepository.ts`
+▪️ `frontend/src/lib/api.ts`
+▪️ `frontend/src/contexts/AuthContext.tsx`
+▪️ `frontend/src/contexts/StatusContext.tsx`
+▪️ `sdk/src/transport.ts`
 
-Very expensive: `middleware/auth.ts`, `db/schema.ts`, `db/database.ts`, `sdk/src/security.ts`, `AuthContext.tsx`, `StatusContext.tsx`.
+## Invariants
 
-## Dependency Heatmap
+▪️ workspace-scoped data must always filter by `workspace_id`
+▪️ plaintext API keys should only appear at create or rotate time
+▪️ `requests` remains canonical telemetry storage
+▪️ `StatusContext` owns the single dashboard EventSource
+▪️ ingest should not wait on slow AI or email work
+▪️ signed ingest is a two-sided SDK and backend contract
 
-| File | Heat | Ripple |
-|---|---:|---|
-| `backend/src/db/schema.ts` | extreme | all persistence/startup |
-| `backend/src/db/database.ts` | extreme | all DB access |
-| `backend/src/services/authService.ts` | extreme | auth, workspace, keys, settings |
-| `backend/src/middleware/auth.ts` | extreme | all protected routes |
-| `backend/src/services/telemetryRepository.ts` | extreme | analytics, requests, forecast, reports, intelligence |
-| `frontend/src/lib/api.ts` | high | most dashboard data |
-| `frontend/src/contexts/AuthContext.tsx` | high | all protected UI |
-| `frontend/src/contexts/StatusContext.tsx` | high | live refresh |
-| `sdk/src/transport.ts` | high | all SDK delivery |
-| `backend/src/services/notificationService.ts` | medium-high | ingest alerts, settings, scheduler |
-| `backend/src/services/copilotService.ts` | medium-high | many backend services |
-
-## Dangerous Invariants
-
-- Workspace-scoped data must always filter by `workspace_id`.
-- Plain API keys exist only at create/regenerate/signup response time.
-- `requests` remains canonical; analytics should be derived unless explicitly redesigned.
-- `StatusContext` owns SSE.
-- Signed ingest protocol is a two-sided SDK/backend contract.
-- Ingest path should stay fast and should not await slow AI/email/report work.
