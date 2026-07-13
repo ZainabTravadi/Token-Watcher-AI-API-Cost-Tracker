@@ -21,6 +21,27 @@ const docs: Record<DocSlug, { title: string; sections: Array<{ heading: string; 
         ]
       },
       {
+        heading: "Connecting a Telegram Bot",
+        body: [
+          "1. Open Telegram.",
+          "2. Search for @BotFather.",
+          "3. Start a chat with BotFather.",
+          "4. Send /newbot.",
+          "5. When prompted, enter a bot display name such as AI API Cost Tracker.",
+          "6. When prompted again, enter a unique username ending in bot, such as aiapicosttracker_bot.",
+          "7. BotFather returns a private HTTP API token. Copy this token and never share or commit it because it gives full access to your bot.",
+          "8. Open the TokenWatcher dashboard.",
+          "9. Navigate to Settings → Telegram Integration.",
+          "10. Paste the BotFather token into the Telegram Bot Token field.",
+          "11. Click Connect.",
+          "12. After the connection succeeds, open your newly created bot and send it any message, for example Hello or /start. This initializes the chat so TokenWatcher can send messages back.",
+          "13. Return to the dashboard and click Test to verify the integration.",
+          "After setup, you can interact with TokenWatcher directly from Telegram to view Today's Spend, Today's Summary, Top Models, Top Endpoints, and Recommendations.",
+          "The bot must receive at least one message from you before test messages can be delivered.",
+          "Screenshot placeholder: add a capture of Settings → Telegram Integration with the token field, Connect button, and Test button."
+        ]
+      },
+      {
         heading: "5-Minute Quick Start",
         body: [
           "Install the package, initialize the SDK, send one event, flush before exit, then verify in the dashboard.",
@@ -182,4 +203,3 @@ export default function DocsPage({ slug }: DocsPageProps) {
     </AppLayout>
   );
 }
-
