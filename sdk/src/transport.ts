@@ -180,7 +180,6 @@ function scheduleFlush(): void {
     flushTimer = null;
     void requestFlush();
   }, config.flushInterval);
-  maybeUnref(flushTimer);
 }
 
 function clearFlushTimer(): void {
