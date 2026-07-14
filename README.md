@@ -34,15 +34,6 @@ TokenWatch keeps the instrumentation simple:
 ▪️ Telegram bot integration through BotFather and OpenClaw
 ▪️ production-ready auth, API keys, and secret handling
 
-## Screenshots
-
-Add screenshots under `docs/images/` and reference them here.
-
-◻️ Dashboard overview
-◻️ Requests page
-◻️ Settings -> Telegram Integration
-◻️ Telegram bot response in chat
-
 ## Architecture Overview
 
 ```mermaid
@@ -200,6 +191,24 @@ In short:
 
 OpenClaw is the stateless Telegram bridge used by TokenWatch.
 Read the guide in [`docs/openclaw.md`](docs/openclaw.md) for the webhook flow, intent routing, and tool execution model.
+
+## Built with GPT-5.6 & Codex
+
+TokenWatcher was developed and refined with the help of **GPT-5.6 and Codex** throughout the project lifecycle.
+
+Codex served as an AI pair programmer, accelerating development by helping with:
+
+- Debugging backend and frontend issues
+- Refactoring TypeScript modules for better maintainability
+- Implementing new features and production-ready workflows
+- Resolving API integration and SDK issues
+- Improving project architecture and code organization
+- Generating and refining technical documentation
+- Assisting with testing, code reviews, and optimization
+
+During development, Codex was used across numerous engineering tasks, including production readiness audits, telemetry pipeline improvements, SDK stabilization, onboarding enhancements, Telegram integration, adapter verification, bug fixes, and documentation updates.
+
+GPT-5.6 was also used to reason through architecture decisions, implementation strategies, debugging approaches, and feature planning, significantly accelerating the development of TokenWatcher while maintaining full developer oversight of the final implementation.
 
 ## Deployment
 
