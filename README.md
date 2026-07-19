@@ -1,4 +1,12 @@
-# TokenWatch
+<p align="center">
+  <img src="logo.png" alt="TokenWatch Satellite" width="300">
+</p>
+
+<h1 align="center">TokenWatch</h1>
+
+<p align="center">
+  <em>Every request has a story.</em>
+</p>
 
 TokenWatch is a production telemetry, analytics, and Telegram delivery platform for AI applications.
 It instruments your application directly, stores request telemetry in PostgreSQL, and turns raw usage data into dashboards, forecasts, reports, and Telegram replies.
