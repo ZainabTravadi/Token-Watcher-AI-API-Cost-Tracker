@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="logo.png" alt="TokenWatch Satellite" width="300">
+  <img src="logo.png" alt="TokenWatcher Satellite" width="300">
 </p>
 
-<h1 align="center">TokenWatch</h1>
+<h1 align="center">TokenWatcher</h1>
 
 <p align="center">
   <em>Every request has a story.</em>
